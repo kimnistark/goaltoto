@@ -1,0 +1,7 @@
+# 데이터는 다운로드/계산으로 만들어지는 것이라 올리지 않음 (용량 큼)
+data/*
+!data/corr.json
+# 시뮬 결과물
+simulator.html
+__pycache__/
+*.pyc
