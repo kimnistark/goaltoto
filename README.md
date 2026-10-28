@@ -28,3 +28,5 @@ py build_html.py
 | validate_handicap.py | 시즌 전 경기 시뮬 → 핸디 확률 보정표 검증 |
 | run_seasons.py | 여러 시즌 준비+시뮬 (보정값 다시 찾을 때) |
 | compare.py | 보정 전/후 비교 |
+| live.py | (1단계) 살아있는 팀 값: 경기마다 갱신, 옛 경기는 덜 반영 |
+| walkforward.py | (1단계) 지난 경기들을 그 이전 정보만으로 다시 예측해서 채점 + 오답노트 |
