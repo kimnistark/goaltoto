@@ -24,6 +24,25 @@ py build_html.py                # live 파일 3개가 있으면 '지금 기준' 
 ```
 되돌리려면 data/ 의 live_teams.json, players_live.json, chain_live.json 중 하나를 지우면 시즌 기준으로 돌아감
 
+## 라운드 기록장 (경기 전 예측 박제 → 경기 후 채점)
+경기 전 (데이터 최신으로 받고 → 지금 기준으로 갱신 → 예측 저장):
+```
+py download_understat.py
+py live.py
+py prepare_players.py live
+py prepare_shapes.py live
+py prepare_chain.py live
+py predict_round.py
+git add records
+git commit -m "예측 날짜"
+git push
+```
+경기 후:
+```
+py download_understat.py
+py score_round.py
+```
+
 ## 파일
 | 파일 | 하는 일 |
 |---|---|
@@ -39,4 +58,6 @@ py build_html.py                # live 파일 3개가 있으면 '지금 기준' 
 | run_seasons.py | 여러 시즌 준비+시뮬 (보정값 다시 찾을 때) |
 | compare.py | 보정 전/후 비교 |
 | live.py | (1단계) 살아있는 팀 값: 경기마다 갱신, 옛 경기는 덜 반영 |
+| predict_round.py | 다가올 경기 스코어 분포 예측 → records/pred_날짜.csv (덮어쓰기 금지) |
+| score_round.py | 박제한 예측을 실제 결과로 채점 (TOP1/3/5, 결과 스코어·골차 확률) |
 | walkforward.py | (1단계) 지난 경기들을 그 이전 정보만으로 다시 예측해서 채점 + 오답노트 |

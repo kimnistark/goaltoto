@@ -1,6 +1,7 @@
 """
 Understat 4대리그 원 데이터 다운로드
-결과: data/matches.csv (경기 단위), data/shots.csv (슈팅 단위), data/red_cards.csv
+결과: data/matches.csv (경기 단위), data/shots.csv (슈팅 단위), data/red_cards.csv,
+      data/fixtures.csv (아직 안 치른 경기 일정 → predict_round.py 가 씀)
 중간에 끊겨도 data/cache에 받은 경기는 다시 안 받음 → 그냥 다시 실행하면 이어서 받음
 """
 import json
@@ -42,6 +43,9 @@ def get_json(path: str, retries: int = 3):
     return None
 
 
+FIXTURES = []   # 아직 안 치른 경기
+
+
 def league_matches(league: str, season: int) -> list[dict]:
     d = get_json(f"getLeagueData/{league}/{season}")
     if not d or "dates" not in d:
@@ -50,7 +54,9 @@ def league_matches(league: str, season: int) -> list[dict]:
     rows = []
     for m in d["dates"]:
         if not m.get("isResult"):
-            continue  # 아직 안 치른 경기
+            FIXTURES.append({"match_id": int(m["id"]), "league": league, "season": season, "datetime": m["datetime"],
+                             "home": m["h"]["title"], "away": m["a"]["title"]})
+            continue  # 아직 안 치른 경기 → 일정으로만 저장
         rows.append({
             "match_id": int(m["id"]), "league": league, "season": season,
             "datetime": m["datetime"],
@@ -85,6 +91,9 @@ def main():
             matches += rows
             time.sleep(DELAY)
     matches = pd.DataFrame(matches)
+    if FIXTURES:
+        pd.DataFrame(FIXTURES).sort_values("datetime").to_csv(DATA / "fixtures.csv", index=False, encoding="utf-8-sig")
+        print(f"  [일정] 아직 안 치른 경기 {len(FIXTURES)}개 → data/fixtures.csv")
     print(f"\n경기 상세 {len(matches)}개 받는 중 (예상 {len(matches) * DELAY / 60:.0f}분 이상)")
 
     # 2) 경기별 슈팅 / 레드카드
