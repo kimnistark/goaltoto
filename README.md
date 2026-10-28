@@ -14,6 +14,16 @@ py build_html.py
 ```
 → `simulator.html` 을 브라우저로 열기
 
+## 지금 기준으로 업데이트 (살아있는 팀·선수 값)
+```
+py live.py                      # 팀 값: 지금까지 경기 반영 → data/live_teams.json
+py prepare_players.py live      # 선수: 최근 1년 기록, 지금 뛰는 팀 (이적생 자동 반영, 스탯은 예전 팀 기록까지 가져감)
+py prepare_shapes.py live       # 선발 구성: 시즌 구분 없이 최근 20경기
+py prepare_chain.py live        # 공격 전개·세트피스: 최근 1년
+py build_html.py                # live 파일 3개가 있으면 '지금 기준' html
+```
+되돌리려면 data/ 의 live_teams.json, players_live.json, chain_live.json 중 하나를 지우면 시즌 기준으로 돌아감
+
 ## 파일
 | 파일 | 하는 일 |
 |---|---|

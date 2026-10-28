@@ -22,17 +22,29 @@ P = json.loads((DATA / "params.json").read_text(encoding="utf-8"))
 SEASON = P["meta"]["season"]
 rng = np.random.default_rng(0)
 
-_cf = DATA / "chain.json"
+_lt = DATA / "live_teams.json"
+LIVE = _lt.exists() and (DATA / "players_live.json").exists() and (DATA / "chain_live.json").exists()   # 살아있는 값 3종이 다 있으면 지금 기준으로
+_cf = DATA / ("chain_live.json" if LIVE else "chain.json")
 if not _cf.exists():
     sys.exit("data/chain.json 이 없어. 먼저 py prepare_chain.py 를 돌려줘")
 C = json.loads(_cf.read_text(encoding="utf-8"))
-_pf = DATA / f"players_{SEASON}.json"
+_pf = DATA / ("players_live.json" if LIVE else f"players_{SEASON}.json")
 PL = json.loads(_pf.read_text(encoding="utf-8"))["teams"] if _pf.exists() else {}
-_sf = DATA / "shapes.json"
+_sf = DATA / ("shapes_live.json" if LIVE and (DATA / "shapes_live.json").exists() else "shapes.json")
 SH = json.loads(_sf.read_text(encoding="utf-8"))["teams"] if _sf.exists() else {}
 
 _kf = DATA / "corr.json"      # 전력 차 보정값 (fit_corr.py 가 만듦. 없으면 보정 안 함)
 CORR_C1 = float(json.loads(_kf.read_text(encoding="utf-8")).get("c1", 0.0)) if _kf.exists() else 0.0
+
+if LIVE:   # 팀 값을 살아있는 값(그 시점까지 기록)으로 덮어씀. 페널티용 att_shots/def_shots 는 오픈플레이 슈팅 값으로
+    _live = json.loads(_lt.read_text(encoding="utf-8"))
+    LIVE_META = _live.get("meta", {})
+    for _t, _v in _live["teams"].items():
+        C["teams"][_t] = {k: _v[k] for k in ("att_open", "def_open", "att_q", "def_q", "att_sp", "def_sp")}
+        P["teams"][_t] = {"att_shots": _v["att_open"], "def_shots": _v["def_open"], "att_q": _v["att_q"], "def_q": _v["def_q"],
+                          "league": _v.get("league")}
+else:
+    LIVE_META = {}
 
 SHAPE_DECAY = 0.9     # 선발 구성: 한 경기 전마다 ×0.9
 OPP_SIGMA = 0.35      # 상대 강도가 이만큼(로그) 다르면 가중치 1/e

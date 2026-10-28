@@ -1,23 +1,33 @@
 """
 data/params.json → simulator.html (파라미터를 박아 넣은 단일 HTML, 시뮬 v3)
 입력: data/params.json, players_{시즌}.json, shapes.json, chain.json
+      (live_teams.json + players_live.json + chain_live.json 이 있으면 그걸로 '지금 기준' html)
 파라미터를 바꾸면 이 파일만 다시 실행하면 됨
 """
 import json
 from pathlib import Path
 
 HERE = Path(__file__).parent
-params = json.loads((HERE / "data" / "params.json").read_text(encoding="utf-8"))
-_pf = HERE / "data" / f"players_{params['meta']['season']}.json"
-_sf = HERE / "data" / "shapes.json"
+D = HERE / "data"
+params = json.loads((D / "params.json").read_text(encoding="utf-8"))
+# 살아있는 값 (live_teams + players_live + chain_live) 이 다 있으면 '지금 기준'으로 만듦. 없으면 예전처럼 시즌 기준
+LIVE = all((D / f).exists() for f in ("live_teams.json", "players_live.json", "chain_live.json"))
+_pf = D / ("players_live.json" if LIVE else f"players_{params['meta']['season']}.json")
+_sf = D / ("shapes_live.json" if LIVE and (D / "shapes_live.json").exists() else "shapes.json")
+_cf = D / ("chain_live.json" if LIVE else "chain.json")
+if not _cf.exists():
+    raise SystemExit("data/chain.json 이 없어. 먼저 py prepare_chain.py 를 돌려줘")
+chain = json.loads(_cf.read_text(encoding="utf-8"))
+if LIVE:
+    _live = json.loads((D / "live_teams.json").read_text(encoding="utf-8"))
+    params["teams"] = {t: {"att_shots": v["att_open"], "def_shots": v["def_open"], "att_q": v["att_q"], "def_q": v["def_q"],
+                           "league": v.get("league") or "기타"} for t, v in _live["teams"].items()}
+    chain["teams"] = {t: {k: v[k] for k in ("att_open", "def_open", "att_q", "def_q", "att_sp", "def_sp")} for t, v in _live["teams"].items()}
+    params["meta"]["live_asof"] = _live.get("meta", {}).get("asof")
 players = json.loads(_pf.read_text(encoding="utf-8"))["teams"] if _pf.exists() else {}
 shapes = json.loads(_sf.read_text(encoding="utf-8"))["teams"] if _sf.exists() else {}
 players = {k: [{kk: p[kk] for kk in ("pid", "name", "group", "start_prob", "finish", "gk_save")} for p in v]
            for k, v in players.items() if k in params["teams"]}
-_cf = HERE / "data" / "chain.json"
-if not _cf.exists():
-    raise SystemExit("data/chain.json 이 없어. 먼저 py prepare_chain.py 를 돌려줘")
-chain = json.loads(_cf.read_text(encoding="utf-8"))
 _ids = {str(p["pid"]) for v in players.values() for p in v}
 chain["players"] = {k: v for k, v in chain["players"].items() if k in _ids}
 _kf = HERE / "data" / "corr.json"          # 전력 차 보정값 (없으면 보정 안 함)
@@ -527,7 +537,9 @@ function fill(sel, def) {
 const teams = Object.keys(P.teams);
 fill($("home"), teams.includes("Arsenal") ? "Arsenal" : teams[0]);
 fill($("away"), teams.includes("Chelsea") ? "Chelsea" : teams[1]);
-$("meta").textContent = `${P.meta.season}/${(P.meta.season + 1) % 100} 시즌 · ${P.meta.leagues.map(l => LEAGUE_KO[l] || l).join(" + ")} · ${P.meta.matches.toLocaleString()}경기 기준`;
+$("meta").textContent = P.meta.live_asof
+  ? `지금 기준 (${P.meta.live_asof}까지 경기 반영, 살아있는 팀·선수 값) · ${P.meta.leagues.map(l => LEAGUE_KO[l] || l).join(" + ")}`
+  : `${P.meta.season}/${(P.meta.season + 1) % 100} 시즌 · ${P.meta.leagues.map(l => LEAGUE_KO[l] || l).join(" + ")} · ${P.meta.matches.toLocaleString()}경기 기준`;
 $("note").textContent = `v3 · 오픈플레이 분당 ${C.base_open} (빌드업 → 패스 → 슈터) · 세트피스 분당 ${C.sp_rate.reduce((a, b) => a + b, 0).toFixed(4)} (코너·간접·직접 프리킥 따로) · 홈 배수 ${P.home_mult} · 선수 결정력·골키퍼(최근 3시즌) 반영${CORR_C1 > 0 ? ` · 전력 차 보정 ${CORR_C1} × 예상 골차 (강팀 +, 약팀 −. 확률·분포에만 반영되고 샘플 경기는 보정 전)` : ""} · 샘플 경기의 이름 순서 = 빌드업 → 마지막 패스 → 슈터 · 게임상태·교체 미적용`;
 
 $("run").onclick = () => {
@@ -633,4 +645,4 @@ out.write_text(TEMPLATE.replace("__PARAMS__", json.dumps(params, ensure_ascii=Fa
                .replace("__SHAPES__", json.dumps(shapes, ensure_ascii=False))
                .replace("__CHAIN__", json.dumps(chain, ensure_ascii=False))
                .replace("__CORR__", json.dumps(corr_c1)), encoding="utf-8")
-print(f"생성: {out}  (팀 {len(params['teams'])}개, 선수 데이터 {len(players)}팀, 선발 구성 {len(shapes)}팀) → 더블클릭해서 크롬으로 열면 돼")
+print(f"생성: {out}  [{('지금 기준 ' + str(params['meta'].get('live_asof'))) if LIVE else '시즌 기준'}]  (팀 {len(params['teams'])}개, 선수 데이터 {len(players)}팀, 선발 구성 {len(shapes)}팀) → 더블클릭해서 크롬으로 열면 돼")

@@ -154,9 +154,7 @@ for t in tests:
     R, D = evaluate(t)
     if t == latest:
         notebook(D, t)
-        cur = {tm: {**R.team_values(tm), "games_this_season": R.n.get(tm, 0), "season": R.season.get(tm)}
-               for tm in R.acc if R.season.get(tm) == latest}
-        (L.DATA / "live_teams.json").write_text(json.dumps(cur, ensure_ascii=False, indent=1), encoding="utf-8")
+        cur, _ = L.write_current(R, T)
         pw = sorted(cur, key=lambda t_: -(cur[t_]["att_open"] * cur[t_]["att_q"] / (cur[t_]["def_open"] * cur[t_]["def_q"])))
         print(f"\n===== 지금 시점 팀 값 (살아있는) — 상위 8 / 하위 5 =====")
         print(f"  {'팀':<26}{'경기':>5}{'슈팅':>7}{'허용':>7}{'질':>7}{'허용질':>7}{'세트':>7}")

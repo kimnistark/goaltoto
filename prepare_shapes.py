@@ -7,6 +7,7 @@
 출력: data/shapes.json
 """
 import json
+import sys
 from pathlib import Path
 
 import numpy as np
@@ -23,8 +24,13 @@ def group(pos):
     if pos.startswith("FW"): return "FWD"
     return "MID"
 
+LIVE = len(sys.argv) > 1 and sys.argv[1] == "live"     # live: 시즌 구분 없이 최근 경기 기준 (지난 시즌 끝 + 이번 시즌)
 m = pd.read_csv(DATA / "matches.csv")
-m = m[(m["season"] == SEASON) & m["league"].isin(LEAGUES)]
+if LIVE:
+    SEASON = int(m["season"].max())
+    m = m[(m["season"] >= SEASON - 1) & m["league"].isin(LEAGUES)]
+else:
+    m = m[(m["season"] == SEASON) & m["league"].isin(LEAGUES)]
 _mt = DATA / "match_time.csv"
 t = (pd.read_csv(_mt)[["match_id", "inj1", "inj2"]] if _mt.exists()
      else pd.DataFrame(columns=["match_id", "inj1", "inj2"]))   # SofaScore 못 받았으면 평균값 사용
@@ -83,7 +89,7 @@ def wls(y, w):
     W = np.sqrt(w)
     b, *_ = np.linalg.lstsq(X * W[:, None], y * W, rcond=None)
     res = (y - X @ b) * W
-    cov = np.linalg.inv((X * W[:, None]).T @ (X * W[:, None])) * (res @ res) / (len(y) - 3)
+    cov = np.linalg.pinv((X * W[:, None]).T @ (X * W[:, None])) * (res @ res) / (len(y) - 3)
     return b[1:], np.sqrt(np.diag(cov))[1:]
 
 targets = {
@@ -118,5 +124,6 @@ for ex in [x for x in ("Arsenal", "Manchester City", "Bayern Munich", "Getafe") 
     c = pd.Series([f"{x['DEF']}-{x['MID']}-{x['FWD']}" for x in teams[ex]]).value_counts()
     print(f"  {ex:<16} " + ", ".join(f"{k} {v}회" for k, v in c.items()))
 
-(DATA / "shapes.json").write_text(json.dumps({"season": SEASON, "effects": effects, "teams": teams}, ensure_ascii=False), encoding="utf-8")
-print(f"\n저장: data/shapes.json (팀 {len(teams)}개, 팀별 최근 {KEEP_RECENT}경기)")
+OUT = "shapes_live.json" if LIVE else "shapes.json"
+(DATA / OUT).write_text(json.dumps({"season": SEASON, "effects": effects, "teams": teams}, ensure_ascii=False), encoding="utf-8")
+print(f"\n저장: data/{OUT} (팀 {len(teams)}개, 팀별 최근 {KEEP_RECENT}경기)")

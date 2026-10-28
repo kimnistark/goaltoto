@@ -1,5 +1,6 @@
 """
 살아있는 팀 값 (1단계)
+사용: py live.py      → 지금 시점 팀 값을 data/live_teams.json 에 저장 (α, carry 는 data/live_params.json, 없으면 찾음. 1~3분)
 - 팀 값을 '시즌 평균' 대신 '그 경기 직전까지의 기록'으로 계산
 - 경기마다 옛 기록의 비중을 (1 − α) 만큼 줄이고 새 경기를 더함  →  새 값 ≈ 기존 값 × (1 − α) + 이번 경기 × α
 - 상대 전력도 그 시점 값으로 보정 (약팀 상대로 슈팅 많이 쏜 건 덜 쳐줌)
@@ -201,3 +202,29 @@ def save_params(p, path=DATA / "live_params.json"):
 
 def load_params(path=DATA / "live_params.json"):
     return json.loads(path.read_text(encoding="utf-8")) if path.exists() else None
+
+
+def write_current(R, T, path=DATA / "live_teams.json"):
+    """지금 시점(마지막 경기 뒤) 이번 시즌 팀들의 값 저장"""
+    latest = int(T["season"].max())
+    lg = T[T["season"] == latest].groupby("team")["league"].first()
+    cur = {tm: {**{k: round(float(v), 4) for k, v in R.team_values(tm).items()}, "league": lg.get(tm),
+                "games_this_season": R.n.get(tm, 0)}
+           for tm in R.acc if R.season.get(tm) == latest}
+    meta = {"asof": str(T["dt"].max().date()), "season": latest}
+    path.write_text(json.dumps({"meta": meta, "teams": cur}, ensure_ascii=False, indent=1), encoding="utf-8")
+    return cur, meta
+
+
+if __name__ == "__main__":
+    m, T = load_team_matches()
+    latest = int(T["season"].max())
+    p = load_params()
+    if not p or p.get("test_season") != latest:
+        print(f"α, carry 찾기 ({latest}/{(latest + 1) % 100} 이전 시즌으로)")
+        p = fit(T, latest)
+        p["test_season"] = latest
+        save_params(p)
+    R = run(T, p["alpha"], p["carry"], p["const"], int(T["season"].min()))
+    cur, meta = write_current(R, T)
+    print(f"저장: data/live_teams.json ({meta['asof']} 기준, 팀 {len(cur)}개)")

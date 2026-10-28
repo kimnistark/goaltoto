@@ -4,6 +4,8 @@
 출력: data/players.json (팀별 선수 목록 + 특성치), data/players.csv (확인용)
 사용: py prepare_players.py          (2025/26 기준)
       py prepare_players.py 2024     (2024/25 기준 → 나중에 시즌 밖 검증용)
+      py prepare_players.py live     (지금 기준: 최근 1년 기록, 지금 뛰고 있는 팀 → data/players_live.json)
+                                     이적생은 새 팀에서 뛰기 시작하면 그 팀 선수로 잡히고, 스탯은 예전 팀 기록까지 그대로 가져감
 
 특성치
 - start_prob : 선발 확률 (그 팀 최근 10경기, 최근일수록 가중치)
@@ -20,7 +22,10 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-SEASON = int(sys.argv[1]) if len(sys.argv) > 1 else 2025
+DATA = Path(__file__).parent / "data"
+LIVE = len(sys.argv) > 1 and sys.argv[1] == "live"
+SEASON = int(pd.read_csv(DATA / "matches.csv", usecols=["season"])["season"].max()) if LIVE else (int(sys.argv[1]) if len(sys.argv) > 1 else 2025)
+WINDOW_DAYS = 365                           # live: 최근 1년 기록으로 소속팀·출전·슈팅 계산
 HIST = [SEASON - 2, SEASON - 1, SEASON]     # 결정력/골키퍼는 3시즌 누적
 RECENT_N, DECAY = 10, 0.85                  # 선발 확률: 최근 10경기, 한 경기 전마다 ×0.85
 K_MIN = 900          # 슈팅 생산: 900분(10경기)만큼 포지션 평균을 섞음
@@ -54,7 +59,6 @@ def best_k(tab, label, default):
     print(f"  → {best:g} 선택 (오차 {best_gain:+.2f}% 개선)")
     return float(best)
 
-DATA = Path(__file__).parent / "data"
 m = pd.read_csv(DATA / "matches.csv")
 m["dt"] = pd.to_datetime(m["datetime"])
 m = m[m["season"].isin(HIST)].set_index("match_id")
@@ -107,7 +111,13 @@ S["goal"] = S["res"] == "Goal"
 print(f"기준 시즌 {SEASON}/{(SEASON + 1) % 100} · 누적 시즌 {HIST} · 출전 기록 {len(A)}건 · 슈팅 {len(S)}개\n")
 
 # ---------- 1. 이번 시즌 소속팀 + 주 포지션 ----------
-cur = A[A["season"] == SEASON]
+if LIVE:
+    ASOF = A["dt"].max()
+    cur = A[A["dt"] > ASOF - pd.Timedelta(days=WINDOW_DAYS)]      # 최근 1년 (이번 시즌 + 지난 시즌 일부)
+    print(f"[live] {ASOF:%Y-%m-%d} 기준, 최근 {WINDOW_DAYS}일 경기 {cur['match_id'].nunique()}개로 소속팀·출전·슈팅 계산\n")
+else:
+    cur = A[A["season"] == SEASON]
+win_ids = set(cur["match_id"])
 last_team = cur.sort_values("dt").groupby("pid").tail(1).set_index("pid")[["team", "league", "name"]]
 starts_pos = cur[cur["start"]].groupby("pid")["pos"].agg(lambda x: x.value_counts().index[0])
 last_team["group"] = starts_pos.map(group).reindex(last_team.index).fillna("MID")
@@ -123,7 +133,7 @@ for team, g in cur.groupby("team"):
         start_prob[(team, pid)] = sum(w[x] for x in h["match_id"]) / wsum
 
 # ---------- 3. 슈팅 생산 (이번 시즌, 페널티 제외) ----------
-np_cur = S[(S["season"] == SEASON) & ~S["pen"]]
+np_cur = S[S["match_id"].isin(win_ids) & ~S["pen"]]
 mins = cur.groupby("pid")["mins"].sum()
 sh = np_cur.groupby("pid").agg(shots=("xg", "size"), xg=("xg", "sum"))
 P = last_team.join(mins.rename("mins")).join(sh).fillna({"shots": 0, "xg": 0, "mins": 0})
@@ -192,11 +202,12 @@ print(P[P["team"] == ex].nlargest(14, "start_prob")[["name", "group", "start_pro
 
 # ---------- 저장 ----------
 cols = ["pid", "name", "team", "league", "group", "mins", "start_prob", "shots90", "xg90", "finish", "gk_save"]
-P[cols].to_csv(DATA / f"players_{SEASON}.csv", index=False, encoding="utf-8-sig")
+TAG = "live" if LIVE else str(SEASON)
+P[cols].to_csv(DATA / f"players_{TAG}.csv", index=False, encoding="utf-8-sig")
 out = {"season": SEASON, "teams": {}}
 for team, g in P[P["start_prob"] > 0].groupby("team"):
     out["teams"][team] = [{k: (None if pd.isna(v) else (round(float(v), 4) if isinstance(v, (float, np.floating)) else v))
                            for k, v in row.items() if k in ("pid", "name", "group", "start_prob", "shots90", "xg90", "finish", "gk_save")}
                           for row in g[cols].to_dict("records")]
-(DATA / f"players_{SEASON}.json").write_text(json.dumps(out, ensure_ascii=False), encoding="utf-8")
-print(f"\n저장: data/players_{SEASON}.json, data/players_{SEASON}.csv (선수 {len(P)}명, 팀 {len(out['teams'])}개)")
+(DATA / f"players_{TAG}.json").write_text(json.dumps(out, ensure_ascii=False), encoding="utf-8")
+print(f"\n저장: data/players_{TAG}.json, data/players_{TAG}.csv (선수 {len(P)}명, 팀 {len(out['teams'])}개)")
