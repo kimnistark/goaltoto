@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>골탐정 오답노트</title>
+<style>
+:root{
+  --bg:#f6f5f2; --card:#fff; --ink:#1b1b1b; --sub:#6b6b6b; --line:#e3e1dc;
+  --heat:15,98,90; --hit:#0f8a5f; --near:#c58a00; --miss:#c43d3d; --accent:#0f625a;
+  --bar:#9cb8b4; --bar-hi:#0f625a;
+}
+@media (prefers-color-scheme: dark){
+  :root{ --bg:#121413; --card:#1b1e1d; --ink:#ecebe7; --sub:#9a9d9b; --line:#2c302e;
+    --heat:64,190,172; --hit:#3ec48f; --near:#e0b13a; --miss:#ec6a6a; --accent:#5fc9b9;
+    --bar:#3a5753; --bar-hi:#5fc9b9; }
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 -apple-system,"Segoe UI","Malgun Gothic",sans-serif}
+.wrap{max-width:1180px;margin:0 auto;padding:20px 16px 60px}
+h1{font-size:22px;margin:0}
+.meta{color:var(--sub);font-size:12.5px;margin-top:4px}
+.top{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;justify-content:space-between}
+select,button{font:inherit;color:var(--ink);background:var(--card);border:1px solid var(--line);border-radius:8px;padding:6px 10px;cursor:pointer}
+button.on{background:var(--accent);color:var(--card);border-color:var(--accent)}
+.bar{display:flex;flex-wrap:wrap;gap:6px;margin:14px 0}
+.summary{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-top:16px}
+.summary table{border-collapse:collapse;width:100%;max-width:620px}
+.summary td,.summary th{padding:5px 8px;text-align:right;font-variant-numeric:tabular-nums}
+.summary th{color:var(--sub);font-weight:500;font-size:12.5px}
+.summary td:first-child,.summary th:first-child{text-align:left}
+.win{color:var(--hit);font-weight:600}.lose{color:var(--miss);font-weight:600}
+.note{color:var(--sub);font-size:12px;margin-top:6px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:12px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 14px}
+.card.hit{border-left:4px solid var(--hit)}.card.near{border-left:4px solid var(--near)}.card.miss{border-left:4px solid var(--miss)}
+.ch{display:flex;justify-content:space-between;color:var(--sub);font-size:12px}
+.lg{font-weight:600;letter-spacing:.02em}
+.teams{display:grid;grid-template-columns:1fr auto 1fr;gap:8px;align-items:center;margin:6px 0 10px}
+.teams .h{text-align:right;font-weight:600}.teams .a{font-weight:600}
+.teams .m{font-variant-numeric:tabular-nums;color:var(--sub);font-size:13px;text-align:center;white-space:nowrap}
+.teams .m b{color:var(--ink);font-size:17px}
+.body{display:grid;grid-template-columns:auto 1fr;gap:14px}
+.hm{border-collapse:collapse;font-size:10.5px;font-variant-numeric:tabular-nums}
+.hm td{width:27px;height:22px;text-align:center;border:1px solid var(--card);position:relative}
+.hm th{color:var(--sub);font-weight:500;font-size:10px;padding:0 3px}
+.hm td.act{outline:2.5px solid var(--miss);outline-offset:-2px;font-weight:700}
+.axis{font-size:10px;color:var(--sub)}
+.side h4{margin:0 0 4px;font-size:11.5px;color:var(--sub);font-weight:500}
+.tops{list-style:none;margin:0 0 10px;padding:0;font-variant-numeric:tabular-nums}
+.tops li{display:flex;justify-content:space-between;gap:8px;padding:1px 0}
+.tops li.act{color:var(--miss);font-weight:700}
+.gd{display:flex;align-items:flex-end;gap:2px;height:54px}
+.gd div{flex:1;background:var(--bar);border-radius:2px 2px 0 0;position:relative;min-height:1px}
+.gd div.act{background:var(--miss)}
+.gdl{display:flex;gap:2px;font-size:9.5px;color:var(--sub);margin-top:2px}
+.gdl span{flex:1;text-align:center}
+.res{margin-top:10px;padding-top:8px;border-top:1px dashed var(--line);font-size:12.5px}
+.res .sc{font-size:16px;font-weight:700;margin-right:6px}
+.tag{display:inline-block;border-radius:6px;padding:1px 7px;font-size:11.5px;font-weight:600;margin-right:4px}
+.tag.hit{background:color-mix(in srgb,var(--hit) 18%,transparent);color:var(--hit)}
+.tag.near{background:color-mix(in srgb,var(--near) 20%,transparent);color:var(--near)}
+.tag.miss{background:color-mix(in srgb,var(--miss) 16%,transparent);color:var(--miss)}
+.why{color:var(--sub);margin-top:3px}
+.wait{color:var(--sub);font-size:12px;margin-top:8px}
+.trend{margin-top:12px}
+@media (max-width:420px){ .grid{grid-template-columns:1fr} .body{grid-template-columns:1fr} }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top">
+    <div>
+      <h1>골탐정 오답노트</h1>
+      <div class="meta" id="meta"></div>
+    </div>
+    <select id="round"></select>
+  </div>
+  <div class="summary" id="summary"></div>
+  <div class="bar" id="filters"></div>
+  <div class="grid" id="grid"></div>
+</div>
+<script>
+const ROUNDS = /*DATA*/[];
+const LG = {EPL:"EPL", La_Liga:"라리가", Bundesliga:"분데스", Serie_A:"세리에"};
+const pct = (x, d=0) => (x*100).toFixed(d) + "%";
+let cur = ROUNDS.length - 1, league = "all", sort = "time";
+
+function grade(g){
+  if (!g.res) return "";
+  return g.res.rank <= 1 ? "hit" : g.res.rank <= 5 ? "near" : "miss";
+}
+
+function summary(r){
+  const done = r.games.filter(g => g.res);
+  const el = document.getElementById("summary");
+  if (!done.length){
+    el.innerHTML = `<b>결과 대기 중</b> · ${r.games.length}경기 예측만 저장됨 (0/${r.games.length} 채점)
+      <div class="note">경기 끝나고 <code>py download_understat.py</code> → <code>py build_notes.py</code> 하면 여기에 채점이 붙음</div>`;
+    return;
+  }
+  const avg = (f) => done.reduce((s,g)=>s+f(g),0)/done.length;
+  const rows = [
+    ["실제 스코어가 1위", avg(g=>g.res.rank<=1), avg(g=>g.res.brank<=1)],
+    ["실제 스코어가 TOP 3 안", avg(g=>g.res.rank<=3), avg(g=>g.res.brank<=3)],
+    ["실제 스코어가 TOP 5 안", avg(g=>g.res.rank<=5), avg(g=>g.res.brank<=5)],
+    ["실제 스코어에 준 확률 (평균)", avg(g=>g.res.p), avg(g=>g.res.bp), 1],
+    ["실제 골차에 준 확률 (평균)", avg(g=>g.res.pgd), avg(g=>g.res.bgd), 1],
+  ];
+  const causes = {model:0, luck:0, ok:0};
+  done.filter(g=>g.res.rank>3).forEach(g=>{ if (g.res.ck) causes[g.res.ck]++; });
+  el.innerHTML = `<b>${done.length}/${r.games.length}경기 채점</b>
+    <table><tr><th></th><th>시뮬</th><th>리그 평균만</th></tr>
+    ${rows.map(([n,a,b,d])=>`<tr><td>${n}</td><td class="${a>b?'win':a<b?'lose':''}">${pct(a,d||0)}</td><td>${pct(b,d||0)}</td></tr>`).join("")}
+    </table>
+    <div class="note">리그 평균만 = 팀 정보 없이 홈·원정 평균 골로만 찍은 경우. 시뮬 숫자가 초록이면 이긴 것</div>
+    <div class="note">TOP 3 밖으로 빗나간 경기: 경기 내용이 예상과 다름 <b>${causes.model}</b> · 골 운 <b>${causes.luck}</b>${causes.ok?` · 기타 ${causes.ok}`:""}</div>
+    ${trend()}`;
+}
+
+function trend(){
+  const pts = ROUNDS.map(r => { const d=r.games.filter(g=>g.res); return d.length ? [r.name, d.filter(g=>g.res.rank<=3).length/d.length, d.filter(g=>g.res.brank<=3).length/d.length] : null; }).filter(Boolean);
+  if (pts.length < 2) return "";
+  const W=560,H=120,P=28, x=i=>P+i*(W-2*P)/(pts.length-1), y=v=>H-P+ -v*(H-2*P)/0.6;
+  const line=(k,c)=>`<polyline fill="none" stroke="${c}" stroke-width="2" points="${pts.map((p,i)=>x(i)+","+y(p[k])).join(" ")}"/>`;
+  return `<div class="trend"><div class="note">라운드별 TOP 3 적중 (진한 선 = 시뮬, 연한 선 = 리그 평균만)</div>
+    <svg viewBox="0 0 ${W} ${H}" width="100%" style="max-width:${W}px">${line(2,"var(--bar)")}${line(1,"var(--bar-hi)")}
+    ${pts.map((p,i)=>`<text x="${x(i)}" y="${H-8}" font-size="10" text-anchor="middle" fill="currentColor" opacity=".6">${p[0].slice(5)}</text>`).join("")}</svg></div>`;
+}
+
+function card(g){
+  const R = g.res, cls = grade(g);
+  const max = Math.max(...g.mat.flat());
+  let hm = `<table class="hm"><tr><th></th>${[0,1,2,3,4,5,"6+"].map(j=>`<th>${j}</th>`).join("")}</tr>`;
+  g.mat.forEach((row,i)=>{
+    hm += `<tr><th>${i==6?"6+":i}</th>` + row.map((p,j)=>{
+      const a = Math.pow(p/max, 0.8), act = R && Math.min(R.gh,6)==i && Math.min(R.ga,6)==j;
+      return `<td class="${act?"act":""}" style="background:rgba(var(--heat),${a.toFixed(2)});color:${a>.55?"#fff":"inherit"}" title="${i}-${j} ${pct(p,1)}">${p>=0.03?Math.round(p*100):""}</td>`;
+    }).join("") + "</tr>";
+  });
+  hm += `</table><div class="axis">세로 = 홈 골, 가로 = 원정 골 (숫자 = %)</div>`;
+  const actS = R ? `${R.gh}-${R.ga}` : null;
+  const tops = g.top.map(([s,p],k)=>`<li class="${s===actS?"act":""}"><span>${k+1}. ${s}</span><span>${pct(p,1)}</span></li>`).join("");
+  const gmax = Math.max(...g.gd), agd = R ? Math.max(-4,Math.min(4,R.gh-R.ga)) : null;
+  const bars = g.gd.map((p,k)=>`<div class="${agd===k-4?"act":""}" style="height:${(p/gmax*100).toFixed(0)}%" title="${pct(p,1)}"></div>`).join("");
+  const labels = ["원4+","-3","-2","-1","0","+1","+2","+3","홈4+"].map(s=>`<span>${s}</span>`).join("");
+  const h2 = g.gd.slice(6).reduce((a,b)=>a+b,0), a2 = g.gd.slice(0,3).reduce((a,b)=>a+b,0);
+  let res = `<div class="wait">결과 대기 · 홈 2골차+ ${pct(h2)} / 원정 2골차+ ${pct(a2)}</div>`;
+  if (R){
+    const t = cls==="hit"?"1위 적중":cls==="near"?`${R.rank}위 (TOP 5 안)`:`${R.rank}위 빗나감`;
+    res = `<div class="res"><span class="sc">${R.gh} - ${R.ga}</span><span class="tag ${cls}">${t}</span>
+      이 스코어에 준 확률 <b>${pct(R.p,1)}</b> (리그 평균만 ${pct(R.bp,1)})
+      ${R.xh!=null?`<div class="why">실제 xG ${R.xh} - ${R.xa} · 시뮬 예상 ${g.mh.toFixed(2)} - ${g.ma.toFixed(2)}${R.ct?` → <b>${R.ct}</b>`:""}</div>`:""}</div>`;
+  }
+  return `<div class="card ${cls}">
+    <div class="ch"><span class="lg">${LG[g.league]||g.league}</span><span>${g.kst} (한국시간)</span></div>
+    <div class="teams"><div class="h">${g.home}</div><div class="m"><b>${g.mh.toFixed(2)}</b> : <b>${g.ma.toFixed(2)}</b><br>평균 골</div><div class="a">${g.away}</div></div>
+    <div class="body"><div>${hm}</div>
+      <div class="side"><h4>많이 나온 스코어</h4><ul class="tops">${tops}</ul>
+        <h4>골차 분포 (핸디)</h4><div class="gd">${bars}</div><div class="gdl">${labels}</div></div></div>
+    ${res}</div>`;
+}
+
+function render(){
+  const r = ROUNDS[cur];
+  document.getElementById("meta").textContent =
+    `${r.name} 라운드 · 데이터 ${r.asof}까지 · 경기당 ${r.n.toLocaleString()}번 시뮬 · 보정 c1=${r.c1} · 코드 ${r.commit}`;
+  summary(r);
+  const lgs = ["all", ...new Set(r.games.map(g=>g.league))];
+  const f = document.getElementById("filters");
+  f.innerHTML = lgs.map(l=>`<button data-l="${l}" class="${l===league?"on":""}">${l==="all"?"전체":LG[l]||l}</button>`).join("")
+    + `<span style="flex:1"></span><button data-s="time" class="${sort==="time"?"on":""}">시간순</button>`
+    + `<button data-s="miss" class="${sort==="miss"?"on":""}">많이 빗나간 순</button>`
+    + `<button data-s="edge" class="${sort==="edge"?"on":""}">한쪽 쏠린 순</button>`;
+  f.querySelectorAll("[data-l]").forEach(b=>b.onclick=()=>{league=b.dataset.l;render();});
+  f.querySelectorAll("[data-s]").forEach(b=>b.onclick=()=>{sort=b.dataset.s;render();});
+  let gs = r.games.filter(g=>league==="all"||g.league===league);
+  if (sort==="miss") gs = [...gs].sort((a,b)=>(a.res?a.res.p:1)-(b.res?b.res.p:1));
+  if (sort==="edge") gs = [...gs].sort((a,b)=>Math.abs(b.mh-b.ma)-Math.abs(a.mh-a.ma));
+  document.getElementById("grid").innerHTML = gs.map(card).join("");
+}
+
+const sel = document.getElementById("round");
+sel.innerHTML = ROUNDS.map((r,i)=>`<option value="${i}">${r.name} 라운드</option>`).join("");
+sel.value = cur; sel.onchange = () => { cur = +sel.value; render(); };
+render();
+</script>
+</body>
+</html>

@@ -61,3 +61,10 @@ py score_round.py
 | predict_round.py | 다가올 경기 스코어 분포 예측 → records/pred_날짜.csv (덮어쓰기 금지) |
 | score_round.py | 박제한 예측을 실제 결과로 채점 (TOP1/3/5, 결과 스코어·골차 확률) |
 | walkforward.py | (1단계) 지난 경기들을 그 이전 정보만으로 다시 예측해서 채점 + 오답노트 |
+
+## 오답노트 (3단계)
+```
+cd "C:\Users\alswo\TT"
+py build_notes.py
+```
+→ `오답노트.html` 더블클릭. 경기 전엔 예측만, `py download_understat.py` 로 결과 받은 뒤 다시 돌리면 채점까지 붙음
