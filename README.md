@@ -3,6 +3,8 @@
 분 단위 축구 경기 시뮬레이터. 두 팀을 넣고 수천 번 돌려서 스코어 분포를 봄.
 데이터: Understat (EPL · 라리가 · 분데스리가 통합)
 
+모든 명령은 `cd "C:\Users\alswo\TT"` 한 다음에 돌림. **뭘 바꾸기 전에 `개발일지.md` 먼저 볼 것** (이미 해보고 탈락한 것 목록 있음)
+
 ## 처음 세팅 (데이터 받기 → 준비 → html)
 ```
 py download_understat.py
@@ -41,6 +43,7 @@ git push
 ```
 py download_understat.py
 py score_round.py
+py build_notes.py
 ```
 
 ## 파일
@@ -61,6 +64,9 @@ py score_round.py
 | predict_round.py | 다가올 경기 스코어 분포 예측 → records/pred_날짜.csv (덮어쓰기 금지) |
 | score_round.py | 박제한 예측을 실제 결과로 채점 (TOP1/3/5, 결과 스코어·골차 확률) |
 | walkforward.py | (1단계) 지난 경기들을 그 이전 정보만으로 다시 예측해서 채점 + 오답노트 |
+| build_notes.py + notes_template.html | (3단계) 오답노트.html: 예측 히트맵·핸디 분포, 결과 나오면 채점·빗나간 이유 |
+| threshold_test.py | 실험: 지난주 예상 골과 실제 골 차이가 문턱 넘으면 팀 가중치 곱하기 vs 지금 방식 |
+| 개발일지.md | 왜 이렇게 정했는지 (결정 → 이유 → 검증 숫자), 탈락한 아이디어 목록 |
 
 ## 오답노트 (3단계)
 ```
