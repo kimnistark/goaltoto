@@ -186,6 +186,7 @@ def typical(team):
     return _typ[team]
 
 # ---------- 시뮬 ----------
+ADD5 = {}     # 실험용: 팀별 (골 확률 더하기 공격, 골 확률 더하기 수비). 오픈플레이 슈팅 → 골 단계에만 더함. 비어 있으면 영향 없음
 LAST = {}     # 마지막 simulate의 경기당 평균 (확인용): 골 종류별 [홈, 원정] + 슈팅 수·xG 합 (오픈/세트피스)
 
 def simulate(home, away, n, use_players=True, excluded=(), corr=True):
@@ -207,7 +208,8 @@ def simulate(home, away, n, use_players=True, excluded=(), corr=True):
                       "pen": P["penalty"]["per_min"] * hm * T["att_shots"] * O["def_shots"],
                       # 자책골로 얻는 골: 밀어붙일수록 많아짐 (chain.json에 없으면 예전처럼 고정값)
                       "og": (C["og_c"] * (hm * TC["att_open"] * OC["def_open"]) ** C["og_gamma"]) if "og_c" in C
-                            else P.get("own_goal_per_min", 0)})
+                            else P.get("own_goal_per_min", 0),
+                      "w5": ADD5.get(team, (0.0, 0.0))[0] + ADD5.get(opp, (0.0, 0.0))[1]})
         L.append(lu)
     for s in (0, 1):   # 상대 골키퍼
         o = L[1 - s]
@@ -235,7 +237,7 @@ def simulate(home, away, n, use_players=True, excluded=(), corr=True):
                     fin = lu["F"][idx, sj]
                 xg = np.minimum(0.97, draw_xg(tot) * X["q"] * m)
                 src["n_open"][s] += tot; src["xg_open"][s] += xg.sum()
-                goal = rng.random(tot) < np.minimum(0.97, xg * C["calib_open"] * fin * X["gk"][idx])
+                goal = rng.random(tot) < np.clip(xg * C["calib_open"] * fin * X["gk"][idx] + X["w5"], 0.0, 0.97)
                 add = np.bincount(idx[goal], minlength=n); scored += add; src["open"][s] += add.sum()
             # --- 세트피스 3종류 ---
             for ti in range(NSP):
