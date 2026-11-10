@@ -201,6 +201,7 @@ def typical(team):
     return _typ[team]
 
 # ---------- 시뮬 ----------
+LU_K = 1.0    # 라인업 효과 세기 (1 = √(빌드업 비율 × 슈팅 비율), 0 = 라인업이 공격 횟수에 영향 없음, 2 = 2배 세게)
 ADD5 = {}     # 실험용: 팀별 (골 확률 더하기 공격, 골 확률 더하기 수비). 오픈플레이 슈팅 → 골 단계에만 더함. 비어 있으면 영향 없음
 LAST = {}     # 마지막 simulate의 경기당 평균 (확인용): 골 종류별 [홈, 원정] + 슈팅 수·xG 합 (오픈/세트피스)
 
@@ -222,7 +223,7 @@ def simulate(home, away, n, use_players=True, excluded=(), corr=True, known=None
                 k, p = shape_dist(team, opp, is_home)
                 lu = draw_lineups(squad(team, excluded), k, p, n)
             tB, tS, tM = typical(team)
-            shot = shot * np.sqrt((lu["sumB"] / tB) * (lu["sumS"] / tS))     # 라인업 → 공격 횟수
+            shot = shot * ((lu["sumB"] / tB) * (lu["sumS"] / tS)) ** (0.5 * LU_K)     # 라인업 → 공격 횟수 (LU_K=1 이면 √)
             q = q / tM
         sides.append({"shot": shot, "q": q,
                       "sp": [r * hm * TC["att_sp"] * OC["def_sp"] for r in C["sp_rate"]],

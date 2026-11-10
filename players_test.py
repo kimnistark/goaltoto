@@ -12,6 +12,7 @@
 
 사용: py make_snaps.py 먼저 → py players_test.py       (팀만 vs 선발 앎)
                              py players_test.py all   (선수 켬(추첨)까지 셋 다)
+                             py players_test.py k     (선발 앎 상태에서 라인업 효과 세기 0 / 0.5 / 1 / 2 / 3 비교)
 """
 import copy
 import json
@@ -31,7 +32,12 @@ m, T = L.load_team_matches()
 latest = int(T["season"].max())
 tests = [int(a) for a in sys.argv[1:] if a.isdigit()] or [latest - 1, latest]
 VAR = {"team": "팀만", "players": "선수 켬", "known": "선발 앎"}
-if "all" not in sys.argv:          # 선수 켬(추첨)은 11/10에 이미 봤으니 기본은 건너뜀 → 시간 절약. 셋 다 보려면 py players_test.py all
+KS = [0.0, 0.5, 1.0, 2.0, 3.0]
+STRENGTH = "k" in sys.argv          # py players_test.py k → 선발 앎 상태에서 라인업 효과 세기만 바꿔가며 비교
+if STRENGTH:
+    N = 1000
+    VAR = {"team": "팀만", **{f"k{k:g}": f"선발 앎 세기 {k:g}" for k in KS}}
+if "all" not in sys.argv and not STRENGTH:          # 선수 켬(추첨)은 11/10에 이미 봤으니 기본은 건너뜀 → 시간 절약. 셋 다 보려면 py players_test.py all
     VAR.pop("players")
 CACHE = Path(__file__).parent / "data" / "cache"
 
@@ -121,7 +127,10 @@ def evaluate(test):
         kn = actual_lineups(h.match_id, h.team, a.team)
         row["has_lineup"] = len(kn) == 2
         for k in VAR:
-            sh, sa, _ = E.simulate(h.team, a.team, N, use_players=(k != "team"), known=kn if k == "known" else None)
+            E.LU_K = float(k[1:]) if k.startswith("k") else 1.0
+            sh, sa, _ = E.simulate(h.team, a.team, N, use_players=(k != "team"),
+                                   known=kn if (k == "known" or k.startswith("k")) else None)
+            E.LU_K = 1.0
             mat = np.zeros((MAXG + 1, MAXG + 1))
             np.add.at(mat, (np.minimum(sh, MAXG), np.minimum(sa, MAXG)), 1)
             mat /= N
@@ -169,7 +178,27 @@ def report(D, label):
     print(f"  팀만과 1위 스코어가 같은 경기 (선발 앎): {(D['known_top1'] == D['team_top1']).mean():.0%}")
 
 
+def report_k(D, label):
+    print(f"\n  ----- {label}: {len(D)}경기 · 선발 앎 상태에서 라인업 효과 세기별 -----")
+    print(f"  {'':<16}{'골 오차':>9}{'확실도':>8}{'1위 적중':>9}{'확실도':>8}{'스코어 확률':>11}{'확실도':>8}")
+    for k in VAR:
+        dz = z(D, "dev", False, k) if k != "team" else 0.0
+        hz = z(D, "hit", True, k) if k != "team" else 0.0
+        pz = z(D, "p", True, k) if k != "team" else 0.0
+        print(f"  {VAR[k]:<16}{D[f'{k}_dev'].mean():>9.4f}{dz:>+8.1f}{D[f'{k}_hit'].mean():>9.1%}{hz:>+8.1f}{D[f'{k}_p'].mean():>11.2%}{pz:>+8.1f}")
+    print("  세기 1 = 지금 엔진(√), 0 = 선발은 아는데 공격 횟수엔 영향 없음(누가 쏘는지만 바뀜). 확실도는 전부 팀만 대비")
+
+
 all_D = [evaluate(t) for t in tests]
+if STRENGTH:
+    D = pd.concat(all_D, ignore_index=True)
+    for s_, g in D.groupby("season"):
+        report_k(g, f"{s_}/{(s_ + 1) % 100}")
+    if len(all_D) > 1:
+        report_k(D, "전체")
+    D.to_csv(Path(__file__).parent / "data" / "players_test_k.csv", index=False, encoding="utf-8-sig")
+    print("  저장: data/players_test_k.csv")
+    sys.exit()
 D = pd.concat(all_D, ignore_index=True)
 for s, g in D.groupby("season"):
     report(g, f"{s}/{(s + 1) % 100}")
