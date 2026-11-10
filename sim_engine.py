@@ -176,6 +176,20 @@ def open_pick(L, idx):
     return pj, sj, ast, m
 
 _typ = {}
+
+def load_snapshot(d):
+    """과거 시점 선수 파일(data/snap/날짜/)로 갈아끼우기 (검증용). 팀 값은 부르는 쪽에서 따로 넣음"""
+    global C, PL, SH, FLOW
+    d = Path(d)
+    teams = C["teams"]
+    C = json.loads((d / "chain_live.json").read_text(encoding="utf-8"))
+    C["teams"].update(teams)
+    PL = json.loads((d / "players_live.json").read_text(encoding="utf-8"))["teams"]
+    _s = d / "shapes_live.json"
+    SH = json.loads(_s.read_text(encoding="utf-8"))["teams"] if _s.exists() else {}
+    FLOW = np.array(C["flow"])
+    _typ.clear()
+
 def typical(team):
     """이 팀 '평소 라인업'의 빌드업 합, 슈팅 합, 질 배수 평균 (제외 선수 없이, 구성 가중치 없이)"""
     if team not in _typ:

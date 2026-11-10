@@ -22,9 +22,11 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from asof import OUTDIR, read_matches
+
 DATA = Path(__file__).parent / "data"
 LIVE = len(sys.argv) > 1 and sys.argv[1] == "live"
-SEASON = int(pd.read_csv(DATA / "matches.csv", usecols=["season"])["season"].max()) if LIVE else (int(sys.argv[1]) if len(sys.argv) > 1 else 2025)
+SEASON = int(read_matches(usecols=["season"])["season"].max()) if LIVE else (int(sys.argv[1]) if len(sys.argv) > 1 else 2025)
 WINDOW_DAYS = 365                           # live: 최근 1년 기록으로 소속팀·출전·슈팅 계산
 HIST = [SEASON - 2, SEASON - 1, SEASON]     # 결정력/골키퍼는 3시즌 누적
 RECENT_N, DECAY = 10, 0.85                  # 선발 확률: 최근 10경기, 한 경기 전마다 ×0.85
@@ -59,7 +61,7 @@ def best_k(tab, label, default):
     print(f"  → {best:g} 선택 (오차 {best_gain:+.2f}% 개선)")
     return float(best)
 
-m = pd.read_csv(DATA / "matches.csv")
+m = read_matches()
 m["dt"] = pd.to_datetime(m["datetime"])
 m = m[m["season"].isin(HIST)].set_index("match_id")
 
@@ -203,11 +205,11 @@ print(P[P["team"] == ex].nlargest(14, "start_prob")[["name", "group", "start_pro
 # ---------- 저장 ----------
 cols = ["pid", "name", "team", "league", "group", "mins", "start_prob", "shots90", "xg90", "finish", "gk_save"]
 TAG = "live" if LIVE else str(SEASON)
-P[cols].to_csv(DATA / f"players_{TAG}.csv", index=False, encoding="utf-8-sig")
+P[cols].to_csv(OUTDIR / f"players_{TAG}.csv", index=False, encoding="utf-8-sig")
 out = {"season": SEASON, "teams": {}}
 for team, g in P[P["start_prob"] > 0].groupby("team"):
     out["teams"][team] = [{k: (None if pd.isna(v) else (round(float(v), 4) if isinstance(v, (float, np.floating)) else v))
                            for k, v in row.items() if k in ("pid", "name", "group", "start_prob", "shots90", "xg90", "finish", "gk_save")}
                           for row in g[cols].to_dict("records")]
-(DATA / f"players_{TAG}.json").write_text(json.dumps(out, ensure_ascii=False), encoding="utf-8")
+(OUTDIR / f"players_{TAG}.json").write_text(json.dumps(out, ensure_ascii=False), encoding="utf-8")
 print(f"\n저장: data/players_{TAG}.json, data/players_{TAG}.csv (선수 {len(P)}명, 팀 {len(out['teams'])}개)")

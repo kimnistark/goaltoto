@@ -13,6 +13,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from asof import OUTDIR, read_matches
+
 DATA = Path(__file__).parent / "data"
 P = json.loads((DATA / "params.json").read_text(encoding="utf-8"))
 SEASON, LEAGUES = P["meta"]["season"], P["meta"]["leagues"]
@@ -25,7 +27,7 @@ def group(pos):
     return "MID"
 
 LIVE = len(sys.argv) > 1 and sys.argv[1] == "live"     # live: 시즌 구분 없이 최근 경기 기준 (지난 시즌 끝 + 이번 시즌)
-m = pd.read_csv(DATA / "matches.csv")
+m = read_matches()
 if LIVE:
     SEASON = int(m["season"].max())
     m = m[(m["season"] >= SEASON - 1) & m["league"].isin(LEAGUES)]
@@ -125,5 +127,5 @@ for ex in [x for x in ("Arsenal", "Manchester City", "Bayern Munich", "Getafe") 
     print(f"  {ex:<16} " + ", ".join(f"{k} {v}회" for k, v in c.items()))
 
 OUT = "shapes_live.json" if LIVE else "shapes.json"
-(DATA / OUT).write_text(json.dumps({"season": SEASON, "effects": effects, "teams": teams}, ensure_ascii=False), encoding="utf-8")
+(OUTDIR / OUT).write_text(json.dumps({"season": SEASON, "effects": effects, "teams": teams}, ensure_ascii=False), encoding="utf-8")
 print(f"\n저장: data/{OUT} (팀 {len(teams)}개, 팀별 최근 {KEEP_RECENT}경기)")

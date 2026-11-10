@@ -36,7 +36,8 @@ def group(pos):
 
 import sys
 LIVE = len(sys.argv) > 1 and sys.argv[1] == "live"     # live: 최근 1년 경기로 계산 (선수 = players_live.json)
-m = pd.read_csv(DATA / "matches.csv")
+from asof import OUTDIR, read_matches
+m = read_matches()
 if LIVE:
     m["_dt"] = pd.to_datetime(m["datetime"])
     m = m[(m["_dt"] > m["_dt"].max() - pd.Timedelta(days=365)) & m["league"].isin(LEAGUES)].copy()
@@ -251,7 +252,7 @@ show("직접 프리킥 TOP", "sp90_dfk", ["n_dfk", "sp90_dfk", "spx_dfk"])
 
 # ---------- 저장 ----------
 keep = None
-_pf = DATA / ("players_live.json" if LIVE else f"players_{SEASON}.json")
+_pf = (OUTDIR / "players_live.json") if LIVE else (DATA / f"players_{SEASON}.json")
 if _pf.exists():
     keep = {p["pid"] for ps in json.loads(_pf.read_text(encoding="utf-8"))["teams"].values() for p in ps}
 pcols = ["build90", "kp90", "s90", "rs", "rp"] + [f"{a}_{k}" for k in SP.values() for a in ("sp90", "spx")]
@@ -277,5 +278,5 @@ out = {
     "players": {str(pid): pack(r) for pid, r in PL.iterrows() if keep is None or pid in keep},
 }
 OUT = "chain_live.json" if LIVE else "chain.json"
-(DATA / OUT).write_text(json.dumps(out, ensure_ascii=False), encoding="utf-8")
+(OUTDIR / OUT).write_text(json.dumps(out, ensure_ascii=False), encoding="utf-8")
 print(f"\n저장: data/{OUT} (팀 {len(out['teams'])}개, 선수 {len(out['players'])}명)")
