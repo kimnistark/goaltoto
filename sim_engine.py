@@ -89,8 +89,9 @@ def power(name):
 def cstat(p):
     return C["players"].get(str(p.get("pid"))) or C["group_mean"].get(p["group"]) or C["group_mean"]["MID"]
 
-def squad(team, excluded=()):
-    ps = [p for p in PL.get(team, []) if p["name"] not in excluded]
+def squad(team, excluded=(), only=None):
+    """only: 선발을 알 때 그 선수 pid 들만 (검증용)"""
+    ps = [p for p in PL.get(team, []) if p["name"] not in excluded and (only is None or p.get("pid") in only)]
     sq = {}
     for g in ("GK",) + GROUPS:
         arr = [p for p in ps if p["group"] == g]
@@ -203,7 +204,9 @@ def typical(team):
 ADD5 = {}     # 실험용: 팀별 (골 확률 더하기 공격, 골 확률 더하기 수비). 오픈플레이 슈팅 → 골 단계에만 더함. 비어 있으면 영향 없음
 LAST = {}     # 마지막 simulate의 경기당 평균 (확인용): 골 종류별 [홈, 원정] + 슈팅 수·xG 합 (오픈/세트피스)
 
-def simulate(home, away, n, use_players=True, excluded=(), corr=True):
+def simulate(home, away, n, use_players=True, excluded=(), corr=True, known=None):
+    """known: {팀: (선발 pid 집합, (수비, 미드, 공격) 인원)} — 실제 선발을 알 때 그대로 넣고 돌림 (검증용)"""
+    known = known or {}
     H, A, h = tp(home), tp(away), P["home_mult"]
     sides, L = [], []
     for T, O, hm, team, opp, is_home in ((H, A, h, home, away, True), (A, H, 1 / h, away, home, False)):
@@ -212,8 +215,12 @@ def simulate(home, away, n, use_players=True, excluded=(), corr=True):
         q = TC["att_q"] * OC["def_q"]
         lu = None
         if use_players and PL.get(team):
-            k, p = shape_dist(team, opp, is_home)
-            lu = draw_lineups(squad(team, excluded), k, p, n)
+            if team in known:
+                pids, shp = known[team]
+                lu = draw_lineups(squad(team, excluded, only=pids), [shp], np.array([1.0]), n)
+            else:
+                k, p = shape_dist(team, opp, is_home)
+                lu = draw_lineups(squad(team, excluded), k, p, n)
             tB, tS, tM = typical(team)
             shot = shot * np.sqrt((lu["sumB"] / tB) * (lu["sumS"] / tS))     # 라인업 → 공격 횟수
             q = q / tM
