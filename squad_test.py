@@ -3,6 +3,9 @@ A. 스쿼드로 팀 값 보정 (11/11) — 시뮬 없이 xG로 채점. 몇 분�
   팀 값(살아있는 값)은 지난 경기들로 쌓이니까 시즌 초·이적 직후엔 늦게 따라감
   선수 기록(xGChain, 다른 팀에서 뛴 것 포함)은 바로 따라감 → 이번 경기 선발 10명의 xGChain/90 합 = '스쿼드 기준 공격력'
   B = log(스쿼드 기준 공격력) − log(팀 값 공격력)  →  +면 '팀 값보다 지금 선수들이 더 세다'
+  (11/11 수정) B 자체는 '선수 값이 평균 쪽으로 눌린 정도'가 섞여서(승격팀 ↑, 강팀 ↓) 안 됨
+  → dB = 이번 B − 그 팀의 지난 경기들 B 평균 (반감기 10경기, 시즌 넘어가도 이어짐)
+     = 팀 값이 따라오기 전에 스쿼드가 바뀐 만큼 (여름 이적이면 시즌 초에 크게 나옴). 승격팀은 지난 기록이 없어서 0
   팀 값이 덜 쌓인 시즌 초일수록 B 가 더 잘 맞을 거라는 가정 → 시즌 경기 수 구간별로 기울기를 따로 찾음
 
   채점: 팀 값 기대 xG 대비 실제 xG (잔차)를 B 가 얼마나 설명하나
@@ -187,12 +190,26 @@ BINS = [(0, 3, "시즌 1~3경기"), (4, 8, "4~8경기"), (9, 15, "9~15경기"), 
 D["bin"] = 0
 for i, (lo, hi, _) in enumerate(BINS):
     D.loc[(D["n"] >= lo) & (D["n"] <= hi), "bin"] = i
+D = D.replace([np.inf, -np.inf], np.nan).dropna(subset=["B"]).reset_index(drop=True)
+D["ref"] = D.groupby("team")["B"].transform(lambda x: x.shift(1).ewm(halflife=10).mean())
+D["dB"] = (D["B"] - D["ref"]).fillna(0.0)                          # 지난 기록 없는 팀(첫 경기·승격팀)은 0
 D["B"] = D["B"] - D.loc[D["season"].isin(TRAIN), "B"].mean()      # 평균 0 으로 (해석 쉽게)
 tr, te = D[D["season"].isin(TRAIN)].copy(), D[D["season"].isin(TEST)].copy()
 
 
 def design(d, kind):
     cols = [np.ones(len(d))]
+    if kind in ("dB", "dBbin", "dBbin+A"):
+        if kind == "dB":
+            cols.append(d["dB"])
+        else:
+            for i in range(1, len(BINS)):
+                cols.append((d["bin"] == i).astype(float))
+            for i in range(len(BINS)):
+                cols.append(d["dB"] * (d["bin"] == i))
+        if kind == "dBbin+A":
+            cols.append(d["A"])
+        return np.column_stack(cols)
     if kind in ("bin", "bin+A"):
         for i in range(1, len(BINS)):
             cols.append((d["bin"] == i).astype(float))
@@ -218,8 +235,8 @@ print(f"  기울기: {TRAIN} {len(tr)}개로 찾음 / 채점: {TEST} {len(te)}�
 print(f"  {'':<26}{'xG 오차 줄어든 %':>16}{'확실도':>8}{'시즌 1~8경기만':>16}{'확실도':>8}")
 early = te["n"] <= 8
 results = {}
-for kind, name in (("one", "B 하나 (모든 경기 같은 기울기)"), ("bin", "B 시즌 경기 수 구간별"),
-                   ("A", "참고: 결장 효과 A 만"), ("bin+A", "B 구간별 + A")):
+for kind, name in (("dB", "dB 하나"), ("dBbin", "dB 시즌 경기 수 구간별"), ("dBbin+A", "dB 구간별 + 결장 A"),
+                   ("A", "참고: 결장 효과 A 만"), ("one", "참고: 예전 B 하나")):
     b, pr = fit_pred(kind)
     results[kind] = b
     e0 = (te["res"] - base_pred) ** 2; e1 = (te["res"] - pr) ** 2; d = e0 - e1
@@ -228,22 +245,22 @@ for kind, name in (("one", "B 하나 (모든 경기 같은 기울기)"), ("bin",
     print(f"  {name:<24}{d.mean() / e0.mean():>15.2%}{z:>+8.1f}{de.mean() / e0[early].mean():>15.2%}{ze:>+8.1f}")
 print("  확실도 +2 이상이면 맞다")
 
-b = results["bin"]
-print("\n  [구간별 기울기] 1이면 '선수 기준이 팀 값보다 10% 세면 실제 xG도 10% 많음', 0이면 선수 기준 무시해도 됨")
+b = results["dBbin"]
+print("\n  [dB 구간별 기울기] 1이면 '스쿼드가 평소보다 10% 세지면 실제 xG도 10% 많음', 0이면 무시해도 됨")
 for i, (lo, hi, lab) in enumerate(BINS):
     nn = (tr["bin"] == i).sum(), (te["bin"] == i).sum()
     print(f"    {lab:<12} 기울기 {b[len(BINS) + i]:+.3f}   (찾은 경기 {nn[0]}, 채점 경기 {nn[1]})")
 
-print("\n  [크기] 채점 경기, 시즌 1~8경기 구간에서 B(선수 기준 − 팀 값) 별 실제 xG ÷ 팀 기대 xG")
+print("\n  [크기] 채점 경기, 시즌 1~8경기 구간에서 dB(스쿼드 변화) 별 실제 xG ÷ 팀 기대 xG")
 g0 = te[early]
-for lo, hi, lab in ((-9, -0.15, "선수 기준이 15%+ 약함"), (-0.15, -0.05, "5~15% 약함"), (-0.05, 0.05, "비슷"),
-                    (0.05, 0.15, "5~15% 셈"), (0.15, 9, "15%+ 셈")):
-    g = g0[(g0["B"] >= lo) & (g0["B"] < hi)]
+for lo, hi, lab in ((-9, -0.15, "스쿼드 15%+ 약해짐"), (-0.15, -0.05, "5~15% 약해짐"), (-0.05, 0.05, "비슷"),
+                    (0.05, 0.15, "5~15% 세짐"), (0.15, 9, "15%+ 세짐")):
+    g = g0[(g0["dB"] >= lo) & (g0["dB"] < hi)]
     if len(g) >= 15:
         r = np.exp(g["res"])
         print(f"    {lab:<20} {len(g):>4}개 → {r.mean():.3f} (±{2 * r.std() / np.sqrt(len(g)):.3f})")
-print("\n  [예시] 26/27 시즌 1~5경기, 선수 기준이 팀 값보다 제일 센 팀 / 제일 약한 팀")
-ex = te[(te["season"] == max(TEST)) & (te["n"] <= 5)].groupby("team")["B"].mean().sort_values()
+print("\n  [예시] 26/27 시즌 1~5경기, 스쿼드가 지난 시즌보다 제일 세진 팀 / 약해진 팀 (dB)")
+ex = te[(te["season"] == max(TEST)) & (te["n"] <= 5)].groupby("team")["dB"].mean().sort_values()
 for t, v in list(ex.tail(5).items())[::-1] + list(ex.head(5).items()):
     print(f"    {t:<26} {np.exp(v):.2f}배")
 D.to_csv(DATA / "squad_test.csv", index=False, encoding="utf-8-sig")
