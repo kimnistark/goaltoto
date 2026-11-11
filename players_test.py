@@ -13,6 +13,7 @@
 사용: py make_snaps.py 먼저 → py players_test.py       (팀만 vs 선발 앎)
                              py players_test.py all   (선수 켬(추첨)까지 셋 다)
                              py players_test.py k     (선발 앎 상태에서 라인업 효과 세기 0 / 0.5 / 1 / 2 / 3 비교)
+                             py players_test.py a     (absence_test.py 먼저. 결장 효과를 팀 값에 곱해서 비교)
 """
 import copy
 import json
@@ -37,7 +38,13 @@ STRENGTH = "k" in sys.argv          # py players_test.py k → 선발 앎 상태
 if STRENGTH:
     N = 1000
     VAR = {"team": "팀만", **{f"k{k:g}": f"선발 앎 세기 {k:g}" for k in KS}}
-if "all" not in sys.argv and not STRENGTH:          # 선수 켬(추첨)은 11/10에 이미 봤으니 기본은 건너뜀 → 시간 절약. 셋 다 보려면 py players_test.py all
+ABS = "a" in sys.argv               # py players_test.py a → 결장 효과(absence_test.py 기울기)를 팀 값에 곱해서 팀만 시뮬
+ABS_B = [0.537, 1.0]                # absence_test.py 가 23/24~24/25 로 찾은 기울기 0.537, 비교용 1.0
+if ABS:
+    VAR = {"team": "팀만", **{f"a{b:g}": f"결장 반영 {b:g}" for b in ABS_B}}
+    _a = pd.read_csv(Path(__file__).parent / "data" / "absence_test.csv")
+    ABS_A = {(int(r.match_id), r.team): float(r.A) for r in _a.itertuples()}
+if "all" not in sys.argv and not STRENGTH and not ABS:          # 선수 켬(추첨)은 11/10에 이미 봤으니 기본은 건너뜀 → 시간 절약. 셋 다 보려면 py players_test.py all
     VAR.pop("players")
 CACHE = Path(__file__).parent / "data" / "cache"
 
@@ -128,8 +135,17 @@ def evaluate(test):
         row["has_lineup"] = len(kn) == 2
         for k in VAR:
             E.LU_K = float(k[1:]) if k.startswith("k") else 1.0
-            sh, sa, _ = E.simulate(h.team, a.team, N, use_players=(k != "team"),
+            saved = {}
+            if k.startswith("a"):          # 결장 반영: 선발 xGChain 비율 A → 공격 슈팅 × exp(기울기 × A)
+                b = float(k[1:])
+                for t in (h.team, a.team):
+                    mult = np.exp(b * ABS_A.get((int(h.match_id), t), 0.0))
+                    saved[t] = dict(E.C["teams"][t])
+                    E.C["teams"][t]["att_open"] *= mult; E.C["teams"][t]["att_sp"] *= mult
+            sh, sa, _ = E.simulate(h.team, a.team, N, use_players=(k != "team" and not k.startswith("a")),
                                    known=kn if (k == "known" or k.startswith("k")) else None)
+            for t, v in saved.items():
+                E.C["teams"][t] = v
             E.LU_K = 1.0
             mat = np.zeros((MAXG + 1, MAXG + 1))
             np.add.at(mat, (np.minimum(sh, MAXG), np.minimum(sa, MAXG)), 1)
@@ -179,17 +195,26 @@ def report(D, label):
 
 
 def report_k(D, label):
-    print(f"\n  ----- {label}: {len(D)}경기 · 선발 앎 상태에서 라인업 효과 세기별 -----")
+    print(f"\n  ----- {label}: {len(D)}경기 · {'결장 효과 기울기별' if ABS else '선발 앎 상태에서 라인업 효과 세기별'} -----")
     print(f"  {'':<16}{'골 오차':>9}{'확실도':>8}{'1위 적중':>9}{'확실도':>8}{'스코어 확률':>11}{'확실도':>8}")
     for k in VAR:
         dz = z(D, "dev", False, k) if k != "team" else 0.0
         hz = z(D, "hit", True, k) if k != "team" else 0.0
         pz = z(D, "p", True, k) if k != "team" else 0.0
         print(f"  {VAR[k]:<16}{D[f'{k}_dev'].mean():>9.4f}{dz:>+8.1f}{D[f'{k}_hit'].mean():>9.1%}{hz:>+8.1f}{D[f'{k}_p'].mean():>11.2%}{pz:>+8.1f}")
-    print("  세기 1 = 지금 엔진(√), 0 = 선발은 아는데 공격 횟수엔 영향 없음(누가 쏘는지만 바뀜). 확실도는 전부 팀만 대비")
+    if not ABS:
+        print("  세기 1 = 지금 엔진(√), 0 = 선발은 아는데 공격 횟수엔 영향 없음(누가 쏘는지만 바뀜). 확실도는 전부 팀만 대비")
 
 
 all_D = [evaluate(t) for t in tests]
+if ABS:
+    D = pd.concat(all_D, ignore_index=True)
+    for s_, g in D.groupby("season"):
+        report_k(g, f"{s_}/{(s_ + 1) % 100}")
+    if len(all_D) > 1:
+        report_k(D, "전체")
+    print("  결장 반영 = 팀만 시뮬인데, 선발 xGChain 이 평소보다 x% 약하면 공격 슈팅을 기울기 × x% 만큼 줄임 (강하면 늘림)")
+    sys.exit()
 if STRENGTH:
     D = pd.concat(all_D, ignore_index=True)
     for s_, g in D.groupby("season"):
