@@ -201,6 +201,9 @@ def typical(team):
     return _typ[team]
 
 # ---------- 시뮬 ----------
+_gsf = DATA / "gamestate.json"
+GS = json.loads(_gsf.read_text(encoding="utf-8")) if _gsf.exists() else None
+GS_ON = False  # 스코어 상황 배수 (gamestate.py). 검증 통과 전까진 끔
 LU_K = 1.0    # 라인업 효과 세기 (1 = √(빌드업 비율 × 슈팅 비율), 0 = 라인업이 공격 횟수에 영향 없음, 2 = 2배 세게)
 ADD5 = {}     # 실험용: 팀별 (골 확률 더하기 공격, 골 확률 더하기 수비). 오픈플레이 슈팅 → 골 단계에만 더함. 비어 있으면 영향 없음
 LAST = {}     # 마지막 simulate의 경기당 평균 (확인용): 골 종류별 [홈, 원정] + 슈팅 수·xG 합 (오픈/세트피스)
@@ -241,15 +244,26 @@ def simulate(home, away, n, use_players=True, excluded=(), corr=True, known=None
     g = np.zeros((2, n), int)
     src = {k: np.zeros(2) for k in ("open", "sp", "pen", "og", "n_open", "xg_open", "n_sp", "xg_sp")}
     first_goal = np.full(n, 999)
-    steps = [(m, tmult(m), None) for m in range(1, 46)] + [(45, TM["46-60"], ("inj1", k)) for k in range(1, 11)] + \
-            [(m, tmult(m), None) for m in range(46, 91)] + [(90, TM["90+"], ("inj2", k)) for k in range(1, 16)]
+    gs = GS_ON and GS is not None
+    tmf = (lambda mm: next((GS["time"][n] for lo, hi, n in BINS if lo <= mm <= hi), 1.0)) if gs else tmult
+    t90 = GS["time"]["90+"] if gs else TM["90+"]
+    t46 = tmf(46) if gs else TM["46-60"]
+    steps = [(m, tmf(m), None) for m in range(1, 46)] + [(45, t46, ("inj1", k)) for k in range(1, 11)] + \
+            [(m, tmf(m), None) for m in range(46, 91)] + [(90, t90, ("inj2", k)) for k in range(1, 16)]
+    if gs:
+        g_open, g_q, g_sp = np.array(GS["open"]), np.array(GS["q"]), np.array(GS["sp"])
     for clock, tm, stp in steps:
         active = np.ones(n, bool) if stp is None else ((inj1 if stp[0] == "inj1" else inj2) >= stp[1])
         for s in (0, 1):
             X, lu = sides[s], L[s]
             scored = np.zeros(n, int)
+            if gs:
+                st = np.clip(g[s] - g[1 - s], -2, 2) + 2          # 이 팀 기준 골차 상황
+                so, sq, ss = g_open[st], g_q[st], g_sp[st]
+            else:
+                so = sq = ss = 1.0
             # --- 오픈플레이 ---
-            k = rng.poisson(X["shot"] * tm) * active
+            k = rng.poisson(X["shot"] * tm * so) * active
             tot = k.sum()
             if tot:
                 idx = np.repeat(np.arange(n), k)
@@ -257,13 +271,13 @@ def simulate(home, away, n, use_players=True, excluded=(), corr=True, known=None
                 if lu is not None:
                     _, sj, _, m = open_pick(lu, idx)
                     fin = lu["F"][idx, sj]
-                xg = np.minimum(0.97, draw_xg(tot) * X["q"] * m)
+                xg = np.minimum(0.97, draw_xg(tot) * X["q"] * m * (sq[idx] if gs else 1.0))
                 src["n_open"][s] += tot; src["xg_open"][s] += xg.sum()
                 goal = rng.random(tot) < np.clip(xg * C["calib_open"] * fin * X["gk"][idx] + X["w5"], 0.0, 0.97)
                 add = np.bincount(idx[goal], minlength=n); scored += add; src["open"][s] += add.sum()
             # --- 세트피스 3종류 ---
             for ti in range(NSP):
-                k = rng.poisson(X["sp"][ti] * tm, n) * active
+                k = rng.poisson(X["sp"][ti] * tm * ss, n) * active
                 tot = k.sum()
                 if not tot:
                     continue
