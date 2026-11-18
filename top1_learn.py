@@ -7,7 +7,7 @@
   학습: shape_check.py 가 저장한 분포 중 앞 시즌들 / 채점: 25/26 ~ 26/27 (처음 보는 경기)
   덜 튀게 보정값에 벌점(λ)을 줌. λ 는 학습 시즌 중 마지막 시즌으로 고름
 
-사용: py shape_check.py 2023 (시뮬, 20분) → py top1_learn.py (몇 초)
+사용: py shape_check.py 2023 (시뮬, 20분) → py goals_model.py (1분) → py top1_learn.py (1~2분)
 """
 import json
 import sys
@@ -39,27 +39,42 @@ y = np.full(len(D), K - 1)
 for k, (i, j) in enumerate(CLS):
     y[(D["gh"] == i).to_numpy() & (D["ga"] == j).to_numpy()] = k
 
-# 경기 특징 z: [1, 라리가, 분데스, 전력 차(홈−원정), |전력 차|, 예상 총 골]
-z = np.column_stack([np.ones(len(D)), (D["league"] == "La_Liga").astype(float), (D["league"] == "Bundesliga").astype(float),
-                     D["mh"] - D["ma"], (D["mh"] - D["ma"]).abs(), D["mh"] + D["ma"]])
-zm, zs = z[:, 1:].mean(0), z[:, 1:].std(0) + 1e-9
-z[:, 1:] = (z[:, 1:] - zm) / zs
-F = z.shape[1]
+# 경기 특징 z: [1, 라리가, 분데스, 전력 차(홈−원정), |전력 차|, 예상 총 골] (+ 팀 성향)
 season = D["season"].to_numpy()
+z0 = np.column_stack([(D["league"] == "La_Liga").astype(float), (D["league"] == "Bundesliga").astype(float),
+                      D["mh"] - D["ma"], (D["mh"] - D["ma"]).abs(), D["mh"] + D["ma"]])
+
+# ② 골 모델 / ④ 팀 성향 (goals_model.py)
+gm_f = DATA / "goals_model.json"
+GM = json.loads(gm_f.read_text(encoding="utf-8")) if gm_f.exists() else None
+if GM:
+    mids = D["match_id"].astype(str)
+    PD = np.array([GM[i]["dc"] if i in GM else list(P[k, :-1]) for k, i in enumerate(mids)])
+    PD = np.column_stack([PD, np.clip(1 - PD.sum(1), 1e-4, 1)])
+    logPD = np.log(np.clip(PD, 1e-4, 1))
+    tend = np.array([[GM[i]["t_draw"], GM[i]["t_low"]] if i in GM else [0.0, 0.0] for i in mids])
+    print(f"골 모델·팀 성향 붙음: {np.mean([i in GM for i in mids]):.0%} 경기")
+else:
+    print("data/goals_model.json 없음 → 시뮬만으로 학습 (py goals_model.py 먼저 돌리면 골 모델·팀 성향도 씀)")
 
 
-def fit(mask, lam, iters=3000, lr=0.05):
-    """로짓 = w × log(시뮬 확률) + B[칸] · z.  B 에 벌점 λ"""
-    w = 1.0; B = np.zeros((K, F))
-    lp, zz, yy = logP[mask], z[mask], y[mask]
-    n = mask.sum()
-    mw = vw = 0.0; mB = np.zeros_like(B); vB = np.zeros_like(B)
+def zmat(extra=None):
+    zz = z0 if extra is None else np.column_stack([z0, extra])
+    zz = (zz - zz.mean(0)) / (zz.std(0) + 1e-9)
+    return np.column_stack([np.ones(len(zz)), zz])
+
+
+def fit(Ls, Z, mask, lam, iters=3000, lr=0.05):
+    """로짓 = Σ w_i × log(확률_i) + B[칸] · z.  B 에 벌점 λ"""
+    w = np.ones(len(Ls)) / len(Ls); B = np.zeros((K, Z.shape[1]))
+    lp = [L_[mask] for L_ in Ls]; zz, yy = Z[mask], y[mask]; n = mask.sum()
+    mw = np.zeros_like(w); vw = np.zeros_like(w); mB = np.zeros_like(B); vB = np.zeros_like(B)
     for t in range(1, iters + 1):
-        L = w * lp + zz @ B.T
+        L = sum(wi * li for wi, li in zip(w, lp)) + zz @ B.T
         L -= L.max(1, keepdims=True)
         Q = np.exp(L); Q /= Q.sum(1, keepdims=True)
-        G = Q.copy(); G[np.arange(n), yy] -= 1                       # d(손실)/d(로짓)
-        gw = (G * lp).sum() / n
+        G = Q.copy(); G[np.arange(n), yy] -= 1
+        gw = np.array([(G * li).sum() / n for li in lp])
         gB = G.T @ zz / n + lam * B
         mw = 0.9 * mw + 0.1 * gw; vw = 0.999 * vw + 0.001 * gw ** 2
         mB = 0.9 * mB + 0.1 * gB; vB = 0.999 * vB + 0.001 * gB ** 2
@@ -68,8 +83,8 @@ def fit(mask, lam, iters=3000, lr=0.05):
     return w, B
 
 
-def predict(w, B, mask):
-    L = w * logP[mask] + z[mask] @ B.T
+def predict(Ls, Z, w, B, mask):
+    L = sum(wi * li[mask] for wi, li in zip(w, Ls)) + Z[mask] @ B.T
     L -= L.max(1, keepdims=True)
     Q = np.exp(L); return Q / Q.sum(1, keepdims=True)
 
@@ -79,45 +94,52 @@ def top1_hit(Q, mask):
     return pick == y[mask], pick
 
 
-# λ 고르기: 학습 시즌 중 마지막 시즌을 떼서
+def zscore(d):
+    return d.mean() / (d.std() / np.sqrt(len(d)) + 1e-12)
+
+
 inner_tr = np.isin(season, TRAIN[:-1]); inner_va = season == TRAIN[-1]
-base_va, _ = top1_hit(P[inner_va], inner_va)
-print(f"λ 고르기: {TRAIN[:-1]} 로 학습 → {TRAIN[-1]} 로 확인 (지금 방식 1위 적중 {base_va.mean():.1%})")
-best = None
-for lam in (3.0, 1.0, 0.3, 0.1, 0.03, 0.01):
-    w, B = fit(inner_tr, lam)
-    h, _ = top1_hit(predict(w, B, inner_va), inner_va)
-    ll = -np.log(predict(w, B, inner_va)[np.arange(inner_va.sum()), y[inner_va]]).mean()
-    print(f"  λ {lam:<6} 1위 적중 {h.mean():.1%}   손실 {ll:.4f}")
-    if best is None or ll < best[1]:
-        best = (lam, ll)
-lam = best[0]
-print(f"  → λ {lam} (손실 기준)\n")
-
 tr = np.isin(season, TRAIN); te = np.isin(season, TEST)
-w, B = fit(tr, lam)
-Q = predict(w, B, te)
-h1, pick1 = top1_hit(Q, te)
 h0, pick0 = top1_hit(P[te], te)
-d = h1.astype(float) - h0
-zsc = d.mean() / (d.std() / np.sqrt(len(d)) + 1e-12)
-ll0 = -np.log(np.clip(P[te][np.arange(te.sum()), y[te]], 1e-4, 1)); ll1 = -np.log(Q[np.arange(te.sum()), y[te]])
-dl = ll0 - ll1; zl = dl.mean() / (dl.std() / np.sqrt(len(dl)) + 1e-12)
-print(f"===== 1위 적중: {TRAIN} 로 학습 → {TEST} {te.sum()}경기 채점 =====")
-print(f"  지금 방식 (시뮬 확률 최대 칸)   {h0.mean():.1%}")
-print(f"  학습한 놈                     {h1.mean():.1%}   확실도 {zsc:+.1f}   (스코어 손실 {ll0.mean():.4f} → {ll1.mean():.4f}, 확실도 {zl:+.1f})")
-print(f"  w (시뮬 확률 믿는 정도) = {w:.2f}   (1 이면 시뮬 그대로, 1보다 크면 시뮬을 더 믿음)")
-print(f"  1위 바뀐 경기 {np.mean(pick1 != pick0):.0%}")
+ll0 = -np.log(np.clip(P[te][np.arange(te.sum()), y[te]], 1e-4, 1))
 
-name = lambda k: f"{CLS[k][0]}-{CLS[k][1]}"
-print("\n  [1위로 찍은 스코어] 지금 → 학습한 놈")
-c0 = pd.Series([name(k) for k in pick0]).value_counts(); c1 = pd.Series([name(k) for k in pick1]).value_counts()
-for s in sorted(set(c0.index) | set(c1.index), key=lambda s: -(c0.get(s, 0) + c1.get(s, 0)))[:8]:
-    g1 = pick1 == CLS.index(tuple(map(int, s.split("-"))))
-    print(f"    {s:<5} {c0.get(s, 0):>5}번 → {c1.get(s, 0):>5}번   (학습한 놈이 찍었을 때 적중 {h1[g1].mean() if g1.any() else 0:.1%})")
-print("\n  [리그별 1위 적중] 지금 → 학습한 놈")
+VARS = [("시뮬 + 보정 (11/18 첫 버전)", [logP], zmat())]
+if GM:
+    VARS += [("시뮬 + 골 모델", [logP, logPD], zmat()),
+             ("시뮬 + 골 모델 + 팀 성향", [logP, logPD], zmat(tend))]
+print(f"\n===== 1위 적중: {TRAIN} 로 학습 → {TEST} {te.sum()}경기 채점 (λ 는 {TRAIN[:-1]}→{TRAIN[-1]} 로 고름) =====")
+print(f"  {'':<28}{'1위 적중':>9}{'확실도':>8}{'스코어 손실':>11}{'확실도':>8}   λ     믿는 정도 (시뮬, 골 모델)")
+print(f"  {'지금 방식 (시뮬 최대 칸)':<26}{h0.mean():>9.1%}{'':>8}{ll0.mean():>11.4f}")
+if GM:
+    hd, _ = top1_hit(PD[te], te)
+    print(f"  {'참고: 골 모델만 (최대 칸)':<26}{hd.mean():>9.1%}{zscore(hd.astype(float) - h0):>+8.1f}")
+results = {}
+for name, Ls, Z in VARS:
+    best = None
+    for lam in (3.0, 1.0, 0.3, 0.1, 0.03):
+        w, B = fit(Ls, Z, inner_tr, lam, iters=1500)
+        Qv = predict(Ls, Z, w, B, inner_va)
+        llv = -np.log(Qv[np.arange(inner_va.sum()), y[inner_va]]).mean()
+        if best is None or llv < best[1]:
+            best = (lam, llv)
+    w, B = fit(Ls, Z, tr, best[0])
+    Q = predict(Ls, Z, w, B, te)
+    h1, pick1 = top1_hit(Q, te)
+    ll1 = -np.log(Q[np.arange(te.sum()), y[te]])
+    results[name] = (h1, pick1)
+    print(f"  {name:<26}{h1.mean():>9.1%}{zscore(h1.astype(float) - h0):>+8.1f}{ll1.mean():>11.4f}{zscore(ll0 - ll1):>+8.1f}   {best[0]:<5} {', '.join(f'{x:.2f}' for x in w)}")
+print("  확실도: 지금 방식 대비. +2 이상이면 맞다 (스코어 손실은 낮을수록 좋음)")
+
+name_best = max(results, key=lambda k: results[k][0].mean())
+h1, pick1 = results[name_best]
+nm = lambda k: f"{CLS[k][0]}-{CLS[k][1]}"
+print(f"\n  [1위로 찍은 스코어] 지금 → {name_best}")
+c0 = pd.Series([nm(k) for k in pick0]).value_counts(); c1 = pd.Series([nm(k) for k in pick1]).value_counts()
+for sc in sorted(set(c0.index) | set(c1.index), key=lambda x: -(c0.get(x, 0) + c1.get(x, 0)))[:8]:
+    g0 = pick0 == CLS.index(tuple(map(int, sc.split("-")))); g1 = pick1 == CLS.index(tuple(map(int, sc.split("-"))))
+    print(f"    {sc:<5} {c0.get(sc, 0):>5}번 (적중 {h0[g0].mean() if g0.any() else 0:.1%}) → {c1.get(sc, 0):>5}번 (적중 {h1[g1].mean() if g1.any() else 0:.1%})")
+print(f"\n  [리그별 1위 적중] 지금 → {name_best}")
 lg = D.loc[te, "league"].to_numpy()
 for L_ in ("EPL", "La_Liga", "Bundesliga"):
     mk = lg == L_
     print(f"    {L_:<11} {mk.sum():>4}경기  {h0[mk].mean():.1%} → {h1[mk].mean():.1%}")
-print("\n  확실도 +2 이상이면 맞다")
