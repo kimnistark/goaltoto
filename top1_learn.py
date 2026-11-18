@@ -57,6 +57,19 @@ if GM:
 else:
     print("data/goals_model.json 없음 → 시뮬만으로 학습 (py goals_model.py 먼저 돌리면 골 모델·팀 성향도 씀)")
 
+# 선발 정보 (absence_test.py 가 저장한 A = 선발 xGChain ÷ 평소 베스트, 경기 직전 선발 발표를 안다고 가정)
+ab_f = DATA / "absence_test.csv"
+LU = None
+if ab_f.exists():
+    ab = pd.read_csv(ab_f)
+    amap = {(int(r.match_id), r.team): float(r.A) for r in ab.itertuples()}
+    Ah = np.array([amap.get((int(mid), h), 0.0) for mid, h in zip(D["match_id"], D["home"])])
+    Aa = np.array([amap.get((int(mid), a_), 0.0) for mid, a_ in zip(D["match_id"], D["away"])])
+    LU = np.column_stack([Ah, Aa, Ah - Aa])
+    print(f"선발 정보 붙음: {np.mean([(int(mid), h) in amap for mid, h in zip(D['match_id'], D['home'])]):.0%} 경기")
+else:
+    print("data/absence_test.csv 없음 → 선발 정보 없이 (py absence_test.py 먼저 돌리면 씀)")
+
 
 def zmat(extra=None):
     zz = z0 if extra is None else np.column_stack([z0, extra])
@@ -107,6 +120,10 @@ VARS = [("시뮬 + 보정 (11/18 첫 버전)", [logP], zmat())]
 if GM:
     VARS += [("시뮬 + 골 모델", [logP, logPD], zmat()),
              ("시뮬 + 골 모델 + 팀 성향", [logP, logPD], zmat(tend))]
+if LU is not None:
+    VARS += [("시뮬 + 선발", [logP], zmat(LU))]
+    if GM:
+        VARS += [("시뮬 + 골 모델 + 선발", [logP, logPD], zmat(LU))]
 print(f"\n===== 1위 적중: {TRAIN} 로 학습 → {TEST} {te.sum()}경기 채점 (λ 는 {TRAIN[:-1]}→{TRAIN[-1]} 로 고름) =====")
 print(f"  {'':<28}{'1위 적중':>9}{'확실도':>8}{'스코어 손실':>11}{'확실도':>8}   λ     믿는 정도 (시뮬, 골 모델)")
 print(f"  {'지금 방식 (시뮬 최대 칸)':<26}{h0.mean():>9.1%}{'':>8}{ll0.mean():>11.4f}")
