@@ -134,7 +134,8 @@ def evaluate(test):
         kn = actual_lineups(h.match_id, h.team, a.team)
         row["has_lineup"] = len(kn) == 2
         for k in VAR:
-            E.LU_K = float(k[1:]) if k.startswith("k") else 1.0
+            strength = k.startswith("k") and k != "known"         # k0.5 같은 세기 테스트용 이름
+            E.LU_K = float(k[1:]) if strength else 1.0
             saved = {}
             if k.startswith("a"):          # 결장 반영: 선발 xGChain 비율 A → 공격 슈팅 × exp(기울기 × A)
                 b = float(k[1:])
@@ -143,7 +144,7 @@ def evaluate(test):
                     saved[t] = dict(E.C["teams"][t])
                     E.C["teams"][t]["att_open"] *= mult; E.C["teams"][t]["att_sp"] *= mult
             sh, sa, _ = E.simulate(h.team, a.team, N, use_players=(k != "team" and not k.startswith("a")),
-                                   known=kn if (k == "known" or k.startswith("k")) else None)
+                                   known=kn if (k == "known" or strength) else None)
             for t, v in saved.items():
                 E.C["teams"][t] = v
             E.LU_K = 1.0
