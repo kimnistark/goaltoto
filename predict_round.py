@@ -54,12 +54,12 @@ try:
 except Exception:
     commit = ""
 asof = E.LIVE_META.get("asof", str(last_result.date()))
-print(f"{len(fx)}경기 예측 ({start:%m/%d} ~ {fx['dt'].max():%m/%d}) · 데이터 {asof}까지 · 경기당 {N:,}번 · 보정 c1={E.CORR_C1} · 코드 {commit or '?'}\n")
+print(f"{len(fx)}경기 예측 ({start:%m/%d} ~ {fx['dt'].max():%m/%d}) · 데이터 {asof}까지 · 경기당 {N:,}번 · 보정 c1={E.CORR_C1} · 마무리 {'켬' if E.FIN_ON else '끔 (data/finish.json 없음)'} · 팀만 · 코드 {commit or '?'}\n")
 
 rows = []
 for r in fx.itertuples():
     unknown = [t for t in (r.home, r.away) if t not in E.C["teams"]]
-    gh, ga, _ = E.simulate(r.home, r.away, N)
+    gh, ga, _ = E.simulate(r.home, r.away, N, use_players=False)   # 11/10~11 검증: 선수 추첨은 1위 적중 못 올림 → 팀만
     gd = gh - ga
     mat = np.zeros((MAXG + 1, MAXG + 1))
     np.add.at(mat, (np.minimum(gh, MAXG), np.minimum(ga, MAXG)), 1)
@@ -75,7 +75,7 @@ for r in fx.itertuples():
         p = (gd <= -4).mean() if g == -4 else (gd >= 4).mean() if g == 4 else (gd == g).mean()
         row[f"gd_{g:+d}"] = round(float(p), 4)
     row["matrix"] = json.dumps(np.round(mat, 4).tolist())
-    row.update({"data_asof": asof, "commit": commit, "c1": E.CORR_C1, "n_sims": N, "unknown_team": ",".join(unknown)})
+    row.update({"data_asof": asof, "commit": commit, "c1": E.CORR_C1, "finish": bool(E.FIN_ON), "players": False, "n_sims": N, "unknown_team": ",".join(unknown)})
     rows.append(row)
     print(f"  {pd.to_datetime(r.datetime):%m/%d %H:%M} {r.home:>24} {gh.mean():.2f} - {ga.mean():.2f} {r.away:<24} "
           f"TOP3 {top[0]} {mat[tuple(order[0])]:.0%} / {top[1]} {mat[tuple(order[1])]:.0%} / {top[2]} {mat[tuple(order[2])]:.0%}"

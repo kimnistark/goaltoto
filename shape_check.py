@@ -30,8 +30,11 @@ DATA = Path(__file__).parent / "data"
 OUT = DATA / "shape_preds.json"
 m, T = L.load_team_matches()
 latest = int(T["season"].max())
-SEASONS = [latest - 2, latest - 1, latest]
-TRAIN, TEST = [latest - 2], [latest - 1, latest]
+_from = next((int(x) for x in sys.argv[1:] if x.isdigit()), latest - 2)      # py shape_check.py 2023 → 23/24 부터
+SEASONS = list(range(_from, latest + 1))
+TRAIN, TEST = SEASONS[:-2], [latest - 1, latest]
+if len(SEASONS) > 3:
+    N = 1500          # 시즌 많이 돌릴 땐 경기당 1500번 (20분 안쪽)
 
 
 def season_params(test):

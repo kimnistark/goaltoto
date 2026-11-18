@@ -206,7 +206,7 @@ GS = json.loads(_gsf.read_text(encoding="utf-8")) if _gsf.exists() else None
 GS_ON = False
 _ff = DATA / "finish.json"
 FIN = json.loads(_ff.read_text(encoding="utf-8")) if _ff.exists() else None
-FIN_ON = False # 강팀 마무리 배수 (finish_test.py): 오픈플레이 슈팅 질 × exp(a(log 공격력 − 평균) + b(log 상대 수비 허용 − 평균))  # 스코어 상황 배수 (gamestate.py). 검증 통과 전까진 끔
+FIN_ON = FIN is not None  # 강팀 마무리 배수 (11/18 실전 확정) (finish_test.py): 오픈플레이 슈팅 질 × exp(a(log 공격력 − 평균) + b(log 상대 수비 허용 − 평균))  # 스코어 상황 배수 (gamestate.py). 검증 통과 전까진 끔
 LU_K = 1.0    # 라인업 효과 세기 (1 = √(빌드업 비율 × 슈팅 비율), 0 = 라인업이 공격 횟수에 영향 없음, 2 = 2배 세게)
 ADD5 = {}     # 실험용: 팀별 (골 확률 더하기 공격, 골 확률 더하기 수비). 오픈플레이 슈팅 → 골 단계에만 더함. 비어 있으면 영향 없음
 LAST = {}     # 마지막 simulate의 경기당 평균 (확인용): 골 종류별 [홈, 원정] + 슈팅 수·xG 합 (오픈/세트피스)
