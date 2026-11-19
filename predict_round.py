@@ -54,7 +54,7 @@ try:
 except Exception:
     commit = ""
 asof = E.LIVE_META.get("asof", str(last_result.date()))
-print(f"{len(fx)}경기 예측 ({start:%m/%d} ~ {fx['dt'].max():%m/%d}) · 데이터 {asof}까지 · 경기당 {N:,}번 · 보정 c1={E.CORR_C1} · 마무리 {'켬' if E.FIN_ON else '끔 (data/finish.json 없음)'} · 팀만 · 코드 {commit or '?'}\n")
+print(f"{len(fx)}경기 예측 ({start:%m/%d} ~ {fx['dt'].max():%m/%d}) · 데이터 {asof}까지 · 경기당 {N:,}번 · 보정 c1={E.CORR_C1} · 마무리 {'켬' if E.FIN_ON else '끔'} · 팀만 · 코드 {commit or '?'}\n")
 
 rows = []
 for r in fx.itertuples():
