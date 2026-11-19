@@ -135,3 +135,36 @@ for lo, hi, lab in ((0, 0.6, "0~0.6"), (0.6, 1.0, "0.6~1.0"), (1.0, 1.5, "1.0~1.
     mk = (gap >= lo) & (gap < hi)
     print(f"  {lab:<10}{mk.sum():>5}경기  실제 {sg[mk].mean():.2f}  " +
           "  ".join(f"{v} {np.where(fav_home, D[f'{v}_mh'], D[f'{v}_ma'])[mk].mean():.2f}" for v in VAR))
+
+# ---------- 6. 선발 앎 (py fair_eval.py ... k) ----------
+kf = sorted(DATA.glob("season_*_k.csv"))
+if kf:
+    K = pd.concat([pd.read_csv(f) for f in kf], ignore_index=True)
+    MK = {v: np.array([json.loads(x) for x in K[f"{v}_mat"]]) for v in ("t", "kn")}
+    kh, ka = K["gh"].clip(upper=MAXG).to_numpy(), K["ga"].clip(upper=MAXG).to_numpy()
+    nk = len(K); ik = np.arange(nk)
+    print(f"\n===== 6. 선발 앎 vs 팀만 (지금 엔진, 매주 그 주 시점 파일, {nk}경기, 양 팀 선발 읽음 {K['has_lineup'].mean():.0%}) =====")
+    hk = {}
+    for v in ("t", "kn"):
+        i, j = top1(MK[v]); hk[v] = (i == kh) & (j == ka)
+    one_k = (kh == 1) & (ka == 1)
+    llk = {v: -np.log(np.clip(MK[v][ik, kh, ka], 1e-4, 1)) for v in ("t", "kn")}
+    print(f"  {'':<22}{'팀만':>18}{'선발 앎':>18}{'확실도':>8}")
+    print(f"  {'1위 적중':<20}{ci(hk['t'].mean(), nk):>22}{ci(hk['kn'].mean(), nk):>22}{z(hk['kn'].astype(float) - hk['t']):>+8.1f}")
+    print(f"  {'  매번 1-1 찍기':<20}{one_k.mean():>18.1%}{'':>18}   선발 앎 − 1-1 찍기 {hk['kn'].mean() - one_k.mean():+.1%} (확실도 {z(hk['kn'].astype(float) - one_k):+.1f})")
+    print(f"  {'스코어 손실':<19}{llk['t'].mean():>18.4f}{llk['kn'].mean():>18.4f}{z(llk['t'] - llk['kn']):>+8.1f}")
+    favk = (K["t_mh"] >= K["t_ma"]).to_numpy()
+    gdk = np.where(favk, K["gh"] - K["ga"], K["ga"] - K["gh"])
+    for kk, lab in ((2, "강팀 −1 오차"), (3, "강팀 −2 오차")):
+        yk = (gdk >= kk).astype(float); b = {}
+        for v in ("t", "kn"):
+            Mf = np.where(favk[:, None, None], MK[v], MK[v].transpose(0, 2, 1))
+            b[v] = (Mf[:, gdm >= kk].sum(1) - yk) ** 2
+        print(f"  {lab:<19}{b['t'].mean():>18.4f}{b['kn'].mean():>18.4f}{z(b['t'] - b['kn']):>+8.1f}")
+    yo = ((K["gh"] + K["ga"]) > 2.5).astype(float).to_numpy(); bo = {}
+    for v in ("t", "kn"):
+        po = MK[v][:, tot > 2.5].sum(1); bo[v] = ((po > 0.5) == (yo == 1)).astype(float)
+    print(f"  {'언오버 2.5 적중':<17}{bo['t'].mean():>18.1%}{bo['kn'].mean():>18.1%}{z(bo['kn'] - bo['t']):>+8.1f}")
+    print("  시즌별 1위 적중: " + "  ".join(f"{s}/{(s + 1) % 100} {hk['t'][(K['season'] == s).to_numpy()].mean():.1%}→{hk['kn'][(K['season'] == s).to_numpy()].mean():.1%}"
+                                          for s in sorted(K["season"].unique())))
+    print("  확실도: + 면 선발 앎이 나음 (손실·오차는 낮을수록 좋음)")

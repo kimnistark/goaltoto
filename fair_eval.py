@@ -30,6 +30,7 @@ import pandas as pd
 
 import live as L
 import sim_engine as E
+from lineups import actual_lineups
 
 N = 1200
 MAXG = 6
@@ -39,6 +40,10 @@ OUT = DATA / "fair"
 OUT.mkdir(exist_ok=True)
 VARIANTS = {"old": (False, 0.045), "new": (True, 0.02), "new45": (True, 0.045)}
 TAG = ""
+KNOWN = "k" in sys.argv[1:]
+if KNOWN:                       # 선발 앎 공정 비교: 매주 그 주 시점 파일(data/snap/주시작일, make_snaps.py) + 지금 엔진
+    VARIANTS = {"t": (False, 0.0), "kn": (False, 0.0)}
+    TAG = "_k"
 if "b" in sys.argv[1:]:          # 2차 비교: c1 더 낮춰보기 (11/19 공정 채점에서 c1 0.02 가 0.045 보다 핸디 확실히 나음 → 더 낮추면?)
     VARIANTS = {"f0": (True, 0.0), "fm02": (True, -0.02), "o0": (False, 0.0)}
     TAG = "_b"
@@ -122,7 +127,7 @@ for s in tests:
     E.C["sp_rate"] = [r * const["base_sp"] / sp_tot for r in E.C["sp_rate"]]
     E.P["home_mult"] = const["home"]
     TT = T[T["season"] <= s]
-    S = {"week": None, "Rw": None, "fin_rows": [], "fin": None}
+    S = {"week": None, "Rw": None, "fin_rows": [], "fin": None, "wok": True}
     rows = []
 
     def before(rs, R):
@@ -139,6 +144,19 @@ for s in tests:
         wk = pd.Timestamp(r0.dt).to_period("W-MON").start_time
         if wk != S["week"]:
             S["week"], S["Rw"] = wk, copy.deepcopy(R)
+            if KNOWN:                              # 그 주 시점 선수·기본값 파일
+                wd = DATA / "snap" / f"{wk:%Y-%m-%d}"
+                S["wok"] = (wd / "players_live.json").exists() and (wd / "params.json").exists()
+                if S["wok"]:
+                    E.load_snapshot(wd)
+                    E.C["base_open"] = const["base_open"]
+                    sp_tot = sum(E.C["sp_rate"])
+                    E.C["sp_rate"] = [r * const["base_sp"] / sp_tot for r in E.C["sp_rate"]]
+                    E.P["home_mult"] = const["home"]
+                else:
+                    S["miss"] = S.get("miss", 0) + 1
+        if KNOWN and not S["wok"]:
+            return
         for r in rs:
             S["Rw"].touch(r.team, r.season)
         h = next(r for r in rs if r.home); a = next(r for r in rs if not r.home)
@@ -148,10 +166,16 @@ for s in tests:
             E.P["teams"][t] = {"att_shots": v["att_open"], "def_shots": v["def_open"], "att_q": v["att_q"], "def_q": v["def_q"]}
         row = {"match_id": int(h.match_id), "season": s, "league": h.league, "home": h.team, "away": a.team,
                "gh": int(h.gf), "ga": int(a.gf), "n_home": S["Rw"].n.get(h.team, 0), "n_away": S["Rw"].n.get(a.team, 0)}
+        kn = actual_lineups(int(h.match_id), h.team, a.team, E.PL) if KNOWN else {}
+        if KNOWN:
+            row["has_lineup"] = len(kn) == 2
         for k, (fin, c1) in VARIANTS.items():
             E.FIN_ON, E.CORR_C1 = fin, c1
             E.rng = np.random.default_rng(int(h.match_id))          # 엔진끼리 같은 난수
-            sh, sa, _ = E.simulate(h.team, a.team, N, use_players=False)
+            if k == "kn":
+                sh, sa, _ = E.simulate(h.team, a.team, N, use_players=True, known=kn)
+            else:
+                sh, sa, _ = E.simulate(h.team, a.team, N, use_players=False)
             mat = np.zeros((MAXG + 1, MAXG + 1))
             np.add.at(mat, (np.minimum(sh, MAXG), np.minimum(sa, MAXG)), 1)
             row[f"{k}_mh"] = round(float(sh.mean()), 4); row[f"{k}_ma"] = round(float(sa.mean()), 4)
@@ -162,6 +186,8 @@ for s in tests:
 
     L.run(TT, p["alpha"], p["carry"], const, int(TT["season"].min()), before)
     E.rng = np.random.default_rng()
+    if KNOWN and S.get("miss"):
+        print(f"  [주의] 그 주 시점 파일 없는 주 {S['miss']}개 건너뜀 → py make_snaps.py {s} 먼저")
     pd.DataFrame(rows).to_csv(OUT / f"season_{s}{TAG}.csv", index=False, encoding="utf-8-sig")
     print(f"  저장: data/fair/season_{s}{TAG}.csv ({len(rows)}경기)")
 print("\n다음: py fair_report.py")

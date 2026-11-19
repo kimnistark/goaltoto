@@ -18,13 +18,15 @@ import pandas as pd
 
 HERE = Path(__file__).parent
 DATA = HERE / "data"
-FILES = ("players_live.json", "shapes_live.json", "chain_live.json")
+FILES = ("params.json", "players_live.json", "shapes_live.json", "chain_live.json")   # params = 그 주 시즌의 전 시즌 (11/19 공정 채점)
 
 m = pd.read_csv(DATA / "matches.csv")
 m["dt"] = pd.to_datetime(m["datetime"])
 latest = int(m["season"].max())
 tests = [int(a) for a in sys.argv[1:] if a.isdigit()] or [latest - 1, latest]
-weeks = sorted(m[m["season"].isin(tests)]["dt"].dt.to_period("W-MON").dt.start_time.unique())
+m["wk"] = m["dt"].dt.to_period("W-MON").dt.start_time
+week_season = m.groupby("wk")["season"].max().to_dict()
+weeks = sorted(m[m["season"].isin(tests)]["wk"].unique())
 todo = [w for w in weeks if not all((DATA / "snap" / f"{w:%Y-%m-%d}" / f).exists() for f in FILES)]
 print(f"시즌 {tests}: 경기 있는 주 {len(weeks)}개 · 이미 찍은 주 {len(weeks) - len(todo)}개 · 남은 주 {len(todo)}개\n")
 
@@ -35,8 +37,9 @@ for i, w in enumerate(todo, 1):
     env["GT_ASOF"] = tag
     log = DATA / "snap" / tag
     log.mkdir(parents=True, exist_ok=True)
-    for script in ("prepare_players.py", "prepare_shapes.py", "prepare_chain.py"):
-        r = subprocess.run([sys.executable, str(HERE / script), "live"], cwd=HERE, env=env,
+    for script, arg in (("prepare_params.py", str(int(week_season[w]) - 1)), ("prepare_players.py", "live"),
+                        ("prepare_shapes.py", "live"), ("prepare_chain.py", "live")):
+        r = subprocess.run([sys.executable, str(HERE / script), arg], cwd=HERE, env=env,
                            capture_output=True, text=True, encoding="utf-8", errors="replace")
         (log / f"{script}.log").write_text(r.stdout + "\n" + r.stderr, encoding="utf-8")
         if r.returncode != 0:
@@ -45,4 +48,4 @@ for i, w in enumerate(todo, 1):
             sys.exit(1)
     el = time.time() - t0
     print(f"  {i}/{len(todo)}  {tag} 기준 완료 · {el / 60:.1f}분 지남 · 남은 시간 약 {el / i * (len(todo) - i) / 60:.0f}분")
-print(f"\n끝: data/snap/ 에 {len(weeks)}주치 선수 파일. 다음: py players_test.py")
+print(f"\n끝: data/snap/ 에 {len(weeks)}주치 파일.")
