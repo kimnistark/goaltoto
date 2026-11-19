@@ -17,6 +17,7 @@ BIN_NAMES = ["0-15", "16-30", "31-45", "46-60", "61-75", "76-90", "90+"]
 N_QUANT = 200   # xG 분포를 저장할 분위수 개수
 
 DATA = Path(__file__).parent / "data"
+from asof import OUTDIR      # GT_ASOF 있으면 data/snap/날짜/ 에 저장 (공정 채점용)
 
 # ===== 0. 데이터 불러오기 =====
 m = pd.read_csv(DATA / "matches.csv")
@@ -184,5 +185,5 @@ params = {
               for tm, r in teams.iterrows()},
     "promoted_default": promoted,
 }
-(DATA / "params.json").write_text(json.dumps(params, ensure_ascii=False, indent=1), encoding="utf-8")
-print(f"\n저장: data/params.json (팀 {len(teams)}개)")
+(OUTDIR / "params.json").write_text(json.dumps(params, ensure_ascii=False, indent=1), encoding="utf-8")
+print(f"\n저장: {OUTDIR / 'params.json'} (팀 {len(teams)}개)")

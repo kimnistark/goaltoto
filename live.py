@@ -25,6 +25,7 @@ SPK = {"FromCorner", "SetPiece", "DirectFreekick"}
 STATS = ("open", "q", "sp")
 PRIOR_K = 3.0          # 처음 보는 팀은 '경기 3개 분량'의 기본값에서 시작
 PROMOTED = {"open": (0.83, 1.17), "q": (0.90, 1.05), "sp": (0.93, 1.11)}   # 승격팀 기본값 (공격, 수비). 25/26 강등팀 평균
+PROMOTED_BY_SEASON = {}   # 공정 채점용: 시즌별 승격팀 기본값 (그 전 시즌 강등팀 값). 비어 있으면 PROMOTED
 
 
 def load_team_matches(leagues=LEAGUES):
@@ -77,7 +78,8 @@ class Ratings:
     def _init(self, team, season):
         u = {s: self._unit(s) * PRIOR_K for s in STATS}
         fresh = season == self.first
-        self.acc[team] = {s: [(1.0 if fresh else PROMOTED[s][0]) * u[s], u[s], (1.0 if fresh else PROMOTED[s][1]) * u[s], u[s]] for s in STATS}
+        pr = PROMOTED_BY_SEASON.get(season, PROMOTED)
+        self.acc[team] = {s: [(1.0 if fresh else pr[s][0]) * u[s], u[s], (1.0 if fresh else pr[s][1]) * u[s], u[s]] for s in STATS}
 
     def touch(self, team, season):
         """시즌이 바뀌었으면 지난 기록 비중을 carry 만큼으로 줄임. 처음 보거나 1시즌 넘게 빠졌던 팀은 승격팀 기본값부터"""
@@ -191,7 +193,7 @@ def fit(T, test_season, grid_alpha=(0.0, 0.01, 0.02, 0.03, 0.05, 0.07, 0.10, 0.1
         base = [x for x in res if x[1] == 0.0 and x[2] == 1.0]
         best[stat] = {"alpha": res[0][1], "carry": res[0][2], "loss": res[0][0], "loss_frozen": base[0][0] if base else None}
         log(f"  {stat:<5} α = {res[0][1]:.2f}, carry = {res[0][2]:.1f}" +
-            (f"   (옛 경기도 똑같이 반영할 때보다 다음 경기 오차 {(1 - res[0][0] / base[0][0]) * 100:+.1f}%)" if base else ""))
+            (f"   (옛 경기도 똑같이 반영할 때보다 다음 경기 오차 {(1 - res[0][0] / base[0][0]) * 100:+.1f}%)" if base and base[0][0] > 0 else ""))
     return {"alpha": {s: best[s]["alpha"] for s in STATS}, "carry": {s: best[s]["carry"] for s in STATS},
             "detail": best, "const": const, "fit_seasons": sorted(int(x) for x in T["season"].unique())}
 

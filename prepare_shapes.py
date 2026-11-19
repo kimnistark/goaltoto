@@ -16,7 +16,7 @@ import pandas as pd
 from asof import OUTDIR, read_matches
 
 DATA = Path(__file__).parent / "data"
-P = json.loads((DATA / "params.json").read_text(encoding="utf-8"))
+P = json.loads(((OUTDIR / "params.json") if (OUTDIR / "params.json").exists() else (DATA / "params.json")).read_text(encoding="utf-8"))
 SEASON, LEAGUES = P["meta"]["season"], P["meta"]["leagues"]
 KEEP_RECENT = 20      # 팀별로 최근 몇 경기의 구성을 저장할지
 

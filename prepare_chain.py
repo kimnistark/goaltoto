@@ -24,7 +24,8 @@ SP_KO = {"corner": "코너", "ifk": "간접FK", "dfk": "직접FK"}
 GROUPS = ["DEF", "MID", "FWD"]
 
 DATA = Path(__file__).parent / "data"
-P = json.loads((DATA / "params.json").read_text(encoding="utf-8"))
+from asof import OUTDIR as _OD
+P = json.loads(((_OD / "params.json") if (_OD / "params.json").exists() else (DATA / "params.json")).read_text(encoding="utf-8"))
 SEASON, LEAGUES = P["meta"]["season"], P["meta"]["leagues"]
 DEF_MINS = 90 + 2.86 + 5.65
 

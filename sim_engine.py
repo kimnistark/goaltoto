@@ -190,6 +190,15 @@ def load_snapshot(d):
     SH = json.loads(_s.read_text(encoding="utf-8"))["teams"] if _s.exists() else {}
     FLOW = np.array(C["flow"])
     _typ.clear()
+    _pp = d / "params.json"                     # 그 시점 params 도 있으면 같이 (공정 채점용)
+    if _pp.exists():
+        global P, INJ1, INJ2, XQ_OPEN, TM
+        teams_p = P["teams"]
+        P = json.loads(_pp.read_text(encoding="utf-8"))
+        P["teams"].update(teams_p)
+        INJ1, INJ2 = pmf(P["added_time"]["first"]), pmf(P["added_time"]["second"])
+        XQ_OPEN = np.array(P["xg_quantiles"]["OpenPlay"])
+        TM = P["time_mult"]
 
 def typical(team):
     """이 팀 '평소 라인업'의 빌드업 합, 슈팅 합, 질 배수 평균 (제외 선수 없이, 구성 가중치 없이)"""
