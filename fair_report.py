@@ -17,12 +17,18 @@ import pandas as pd
 
 DATA = Path(__file__).parent / "data" / "fair"
 MAXG = 6
-files = sorted(DATA.glob("season_*.csv"))
+files = sorted(f for f in DATA.glob("season_*.csv") if f.stem.count("_") == 1)
 if not files:
     raise SystemExit("data/fair/ 에 결과가 없어. 먼저 py fair_eval.py 2023 2024")
 D = pd.concat([pd.read_csv(f) for f in files], ignore_index=True)
-VAR = [v for v in ("old", "new", "new45") if f"{v}_mat" in D]
-NAME = {"old": "예전 (마무리 끔, c1 0.045)", "new": "지금 (마무리 켬, c1 0.02)", "new45": "마무리 켬, c1 0.045"}
+extra = sorted(f for f in DATA.glob("season_*_b.csv"))
+if extra:                                         # 2차 비교 (py fair_eval.py ... b) 결과가 있으면 같은 경기끼리 붙임
+    X = pd.concat([pd.read_csv(f) for f in extra], ignore_index=True)
+    keep = ["match_id"] + [c for c in X.columns if c.split("_")[0] in ("f0", "fm02", "o0")]
+    D = D.merge(X[keep], on="match_id", how="inner")
+VAR = [v for v in ("old", "new", "new45", "o0", "f0", "fm02") if f"{v}_mat" in D]
+NAME = {"old": "예전 (마무리 끔, c1 0.045)", "new": "지금 (마무리 켬, c1 0.02)", "new45": "마무리 켬, c1 0.045",
+        "o0": "마무리 끔, c1 0", "f0": "마무리 켬, c1 0", "fm02": "마무리 켬, c1 −0.02"}
 M = {v: np.array([json.loads(x) for x in D[f"{v}_mat"]]) for v in VAR}
 gh, ga = D["gh"].clip(upper=MAXG).to_numpy(), D["ga"].clip(upper=MAXG).to_numpy()
 idx = np.arange(len(D))

@@ -317,10 +317,12 @@ def simulate(home, away, n, use_players=True, excluded=(), corr=True, known=None
     # --- 전력 차 보정: 보정 전 평균 골차 x 에 대해 강팀 +c1·x 골, 약팀 −c1·x 골 ---
     mh, ma = float(g[0].mean()), float(g[1].mean())
     LAST["raw"] = [mh, ma]                       # 보정 전 평균 골 (보정값을 다시 찾을 때 씀)
-    if corr and CORR_C1 > 0 and mh != ma:
+    if corr and CORR_C1 != 0 and mh != ma:
         s_, w_ = (0, 1) if mh > ma else (1, 0)
-        delta = CORR_C1 * abs(mh - ma)
-        g[s_] += rng.poisson(delta, n)                                   # 강팀: 평균 delta 골짜리 추가 골
+        if CORR_C1 < 0:                                                  # 음수면 반대로: 강팀 골 깎고 약팀 골 추가
+            s_, w_ = w_, s_
+        delta = abs(CORR_C1) * abs(mh - ma)
+        g[s_] += rng.poisson(delta, n)                                   # (양수) 강팀: 평균 delta 골짜리 추가 골
         keep = max(0.0, 1 - delta / max(g[w_].mean(), 1e-9))
-        g[w_] = rng.binomial(g[w_], keep)                                # 약팀: 골 하나하나를 일정 확률로 취소
+        g[w_] = rng.binomial(g[w_], keep)                                # (양수) 약팀: 골 하나하나를 일정 확률로 취소
     return g[0], g[1], first_goal

@@ -38,12 +38,16 @@ DATA = HERE / "data"
 OUT = DATA / "fair"
 OUT.mkdir(exist_ok=True)
 VARIANTS = {"old": (False, 0.045), "new": (True, 0.02), "new45": (True, 0.045)}
+TAG = ""
+if "b" in sys.argv[1:]:          # 2차 비교: c1 더 낮춰보기 (11/19 공정 채점에서 c1 0.02 가 0.045 보다 핸디 확실히 나음 → 더 낮추면?)
+    VARIANTS = {"f0": (True, 0.0), "fm02": (True, -0.02), "o0": (False, 0.0)}
+    TAG = "_b"
 
 m, T = L.load_team_matches()
 seasons_all = sorted(int(x) for x in T["season"].unique())
 # α·carry 를 그 전 시즌으로 찾으려면 '워밍업 1시즌 + 채점 1시즌' 이 앞에 있어야 함 → 첫 두 시즌은 채점 못 함 (21/22, 22/23)
 tests = [int(a) for a in sys.argv[1:] if a.isdigit()] or seasons_all[2:]
-tests = [s for s in tests if s >= seasons_all[2] and not (OUT / f"season_{s}.csv").exists()]
+tests = [s for s in tests if s >= seasons_all[2] and not (OUT / f"season_{s}{TAG}.csv").exists()]
 if not tests:
     sys.exit("채점할 시즌이 없음 (이미 다 했거나 첫 시즌만 남음). py fair_report.py 로 결과 보면 됨")
 print(f"채점 시즌: {tests} · 엔진 {len(VARIANTS)}개 · 경기당 {N}번\n")
@@ -158,6 +162,6 @@ for s in tests:
 
     L.run(TT, p["alpha"], p["carry"], const, int(TT["season"].min()), before)
     E.rng = np.random.default_rng()
-    pd.DataFrame(rows).to_csv(OUT / f"season_{s}.csv", index=False, encoding="utf-8-sig")
-    print(f"  저장: data/fair/season_{s}.csv ({len(rows)}경기)")
+    pd.DataFrame(rows).to_csv(OUT / f"season_{s}{TAG}.csv", index=False, encoding="utf-8-sig")
+    print(f"  저장: data/fair/season_{s}{TAG}.csv ({len(rows)}경기)")
 print("\n다음: py fair_report.py")
